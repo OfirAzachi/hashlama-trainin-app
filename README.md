@@ -1,0 +1,1 @@
+# hashlama-trainin-app
