@@ -104,7 +104,7 @@ export default function GroupStandings({
           <div>
             <h2 className="text-lg font-semibold text-ink">טבלת הקבוצות</h2>
             <p className="text-sm text-muted">
-              מדורג לפי נקודות לחבר קבוצה — כל אימון שנרשם מזיז את הקבוצה שלך.
+              מדורג לפי נקודות לחבר קבוצה — לחיצה על קבוצה מציגה פירוט מלא.
             </p>
           </div>
           <Badge tone="accent">
@@ -113,107 +113,138 @@ export default function GroupStandings({
           </Badge>
         </div>
 
-        <ol className="space-y-3">
-          {standings.map((row, index) => {
-            const group = GROUPS_BY_ID[row.team];
-            const isMine = myGroup === row.team;
-            const isFocus = focus === row.team;
+        {/* podium — top 3 */}
+        <div className="flex items-end justify-center gap-2 sm:gap-3">
+          {[1, 0, 2]
+            .map((i) => (standings[i] ? { row: standings[i], rank: i + 1 } : null))
+            .filter((entry): entry is { row: GroupStanding; rank: number } => entry !== null)
+            .map(({ row, rank }) => {
+              const group = GROUPS_BY_ID[row.team];
+              const isMine = myGroup === row.team;
+              const isFocus = focus === row.team;
+              const podiumHeight = rank === 1 ? 'pb-6 pt-4' : rank === 2 ? 'pb-4 pt-3' : 'pb-3 pt-2';
 
-            return (
-              <li key={row.team}>
+              return (
                 <button
+                  key={row.team}
                   type="button"
                   onClick={() => setSelected(row.team)}
                   aria-pressed={isFocus}
                   className={cn(
-                    'w-full rounded-2xl border p-4 text-start transition-colors',
+                    'flex w-1/3 max-w-[9.5rem] flex-col items-center gap-1.5 rounded-2xl border px-2 text-center transition-colors',
+                    podiumHeight,
                     isFocus ? 'border-accent bg-accent/5' : 'border-line bg-surface hover:bg-elevated',
+                    rank === 1 && 'order-2',
+                    rank === 2 && 'order-1',
+                    rank === 3 && 'order-3',
                   )}
                 >
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="text-2xl" aria-hidden>
-                      {MEDALS[index] ?? '🏅'}
-                    </span>
-
-                    <span className="min-w-0 flex-1">
-                      <span className="flex flex-wrap items-center gap-2">
-                        <span
-                          className="text-base font-semibold"
-                          style={{ color: group.color }}
-                        >
-                          {group.name}
-                        </span>
-                        {isMine ? <Badge tone="accent">הקבוצה שלי</Badge> : null}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-muted tnum">
-                        {row.members} מתאמנים · {row.points.toLocaleString('he-IL')} נקודות סה״כ
-                      </span>
-                    </span>
-
-                    <span className="text-end">
-                      <span className="block text-2xl font-semibold tnum text-ink">
-                        {row.points_per_member}
-                      </span>
-                      <span className="block text-[11px] text-muted">נק׳ לחבר</span>
-                    </span>
-                  </div>
-
-                  <div className="mt-3">
-                    <ProgressBar
-                      value={(row.points_per_member / maxPerMember) * 100}
-                      color={group.color}
-                      label={`ניקוד ${group.name}`}
-                    />
-                  </div>
-
-                  <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-xl bg-elevated p-2">
-                      <dt className="text-[11px] text-muted">שיפור ב-3 ק״מ</dt>
-                      <dd className="text-sm font-semibold tnum text-emerald-600 dark:text-emerald-400">
-                        {formatPercent(row.run_improvement_pct)}
-                      </dd>
-                    </div>
-                    <div className="rounded-xl bg-elevated p-2">
-                      <dt className="text-[11px] text-muted">שכיבות סמיכה</dt>
-                      <dd className="text-sm font-semibold tnum text-ink">
-                        {formatSignedNumber(row.pushup_gain, 1)}
-                      </dd>
-                    </div>
-                    <div className="rounded-xl bg-elevated p-2">
-                      <dt className="text-[11px] text-muted">אימונים שהושלמו</dt>
-                      <dd className="text-sm font-semibold tnum text-ink">
-                        {formatPercent(row.completion_rate * 100, 0)}
-                      </dd>
-                    </div>
-                  </dl>
+                  <span className={cn('leading-none', rank === 1 ? 'text-3xl' : 'text-2xl')} aria-hidden>
+                    {MEDALS[rank - 1]}
+                  </span>
+                  <span className="truncate text-sm font-semibold" style={{ color: group.color }}>
+                    {group.shortName}
+                  </span>
+                  {isMine ? <Badge tone="accent">שלי</Badge> : null}
+                  <span className="tnum text-xl font-bold text-ink sm:text-2xl">{row.points_per_member}</span>
+                  <span className="text-[11px] text-muted">נק׳ לחבר · {row.members} מתאמנים</span>
                 </button>
-              </li>
-            );
-          })}
-        </ol>
+              );
+            })}
+        </div>
 
-        {/* what it takes to climb */}
+        {/* compact table — the rest of the field */}
+        {standings.length > 3 ? (
+          <ol className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
+            {standings.slice(3).map((row, index) => {
+              const rank = index + 4;
+              const group = GROUPS_BY_ID[row.team];
+              const isMine = myGroup === row.team;
+              const isFocus = focus === row.team;
+
+              return (
+                <li key={row.team}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(row.team)}
+                    aria-pressed={isFocus}
+                    className={cn(
+                      'flex w-full items-center gap-3 px-3 py-2.5 text-start transition-colors',
+                      isFocus ? 'bg-accent/5' : 'bg-surface hover:bg-elevated',
+                    )}
+                  >
+                    <span className="w-5 shrink-0 text-center text-xs font-semibold text-muted tnum">
+                      {rank}
+                    </span>
+                    <span
+                      aria-hidden
+                      className="h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: group.color }}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+                      {group.shortName}
+                    </span>
+                    {isMine ? <Badge tone="accent">שלי</Badge> : null}
+                    <span className="shrink-0 text-xs text-muted tnum">{row.members} מתאמנים</span>
+                    <span className="shrink-0 text-sm font-semibold tnum text-ink">
+                      {row.points_per_member} נק׳
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        ) : null}
+
+        {/* selected group — full detail */}
         {focusRow ? (
-          <Card className="card-pad">
-            <div className="flex flex-wrap items-center gap-3">
-              <Sparkles aria-hidden className="h-5 w-5 text-accent" />
+          <Card className="card-pad space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-base font-semibold" style={{ color: GROUPS_BY_ID[focusRow.team].color }}>
+                {GROUPS_BY_ID[focusRow.team].name}
+              </span>
+              <Badge tone="neutral">מקום {focusRank}</Badge>
+              <span className="ms-auto text-xs text-muted tnum">
+                {focusRow.points.toLocaleString('he-IL')} נקודות סה״כ
+              </span>
+            </div>
+
+            <ProgressBar
+              value={(focusRow.points_per_member / maxPerMember) * 100}
+              color={GROUPS_BY_ID[focusRow.team].color}
+              label={`ניקוד ${GROUPS_BY_ID[focusRow.team].name}`}
+            />
+
+            <dl className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl bg-elevated p-2">
+                <dt className="text-[11px] text-muted">שיפור ב-3 ק״מ</dt>
+                <dd className="text-sm font-semibold tnum text-emerald-600 dark:text-emerald-400">
+                  {formatPercent(focusRow.run_improvement_pct)}
+                </dd>
+              </div>
+              <div className="rounded-xl bg-elevated p-2">
+                <dt className="text-[11px] text-muted">שכיבות סמיכה</dt>
+                <dd className="text-sm font-semibold tnum text-ink">
+                  {formatSignedNumber(focusRow.pushup_gain, 1)}
+                </dd>
+              </div>
+              <div className="rounded-xl bg-elevated p-2">
+                <dt className="text-[11px] text-muted">אימונים שהושלמו</dt>
+                <dd className="text-sm font-semibold tnum text-ink">
+                  {formatPercent(focusRow.completion_rate * 100, 0)}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
+              <Sparkles aria-hidden className="h-5 w-5 shrink-0 text-accent" />
               <p className="min-w-0 flex-1 text-sm text-ink">
                 {focusRank === 1 ? (
-                  <>
-                    <span className="font-semibold">
-                      {GROUPS_BY_ID[focusRow.team].shortName}
-                    </span>{' '}
-                    בראש הטבלה. עוד אימון שנרשם — והפער נשמר.
-                  </>
+                  <>עוד אימון שנרשם — והפער נשמר.</>
                 ) : (
                   <>
-                    <span className="font-semibold">
-                      {GROUPS_BY_ID[focusRow.team].shortName}
-                    </span>{' '}
-                    במקום {focusRank}. חסרות{' '}
-                    <span className="font-semibold tnum text-accent">{gapToLeader + 1}</span> נקודות
-                    לחבר כדי לעקוף — זה בערך{' '}
-                    <span className="font-semibold tnum">{trainingsToClimb}</span>{' '}
+                    חסרות <span className="font-semibold tnum text-accent">{gapToLeader + 1}</span> נקודות
+                    לחבר כדי לעקוף — זה בערך <span className="font-semibold tnum">{trainingsToClimb}</span>{' '}
                     אימונים שנרשמים בקצב הנוכחי של הקבוצה.
                   </>
                 )}

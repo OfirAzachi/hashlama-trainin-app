@@ -376,6 +376,7 @@ export default function TrainerDashboard({ snapshot }: { snapshot: CohortSnapsho
         <WeeklyTrainingBuilder
           nextWeekIndex={nextWeekIndex}
           participantCount={participants.length}
+          pastSessions={sessions}
         />
       ) : null}
 

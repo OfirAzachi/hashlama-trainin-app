@@ -9,7 +9,9 @@ import {
   insertSession,
   insertRunningEntries,
   insertStrengthEntries,
+  sessionHasLogs,
   toggleLike,
+  updateSession,
 } from '@/lib/data';
 import { findExercise, hasFixedExercises } from '@/lib/catalog';
 import { supabaseConfigured } from '@/lib/supabase/env';
@@ -123,13 +125,11 @@ export async function uploadSessionMedia(
 }
 
 /**
- * Creates a weekly training. Each type is validated on its own terms:
- * running needs a segment plan, the two points games need an interval setup,
- * and neither requires per-group exercise tracks.
+ * Field-level validation shared by create and update: running needs a
+ * segment plan, the two points games need an interval setup, and neither
+ * requires per-group exercise tracks.
  */
-export async function createTrainingSession(
-  input: SessionPlanInput,
-): Promise<ActionResult<TrainingSession>> {
+function validateSessionPlan(input: SessionPlanInput): Record<string, string> {
   const fieldErrors: Record<string, string> = {};
 
   if (!input.title?.trim()) fieldErrors.title = 'תנו שם לאימון.';
@@ -157,15 +157,23 @@ export async function createTrainingSession(
       // Warm-up / cool-down: no levels, no participant choice — the trainer
       // picks the exact exercise for every round.
       if (config.round_exercise_ids.length < 1) fieldErrors.rounds = 'צריך לפחות סבב אחד.';
-      if (config.work_seconds < 1) fieldErrors.work_seconds = 'הגדירו את זמן העבודה.';
-      if (config.rest_seconds < 0) fieldErrors.rest_seconds = 'הגדירו את זמן המנוחה.';
+      if (config.round_work_seconds.some((seconds) => seconds < 1)) {
+        fieldErrors.work_seconds = 'הגדירו את זמן העבודה לכל סבב.';
+      }
+      if (config.round_rest_seconds.some((seconds) => seconds < 0)) {
+        fieldErrors.rest_seconds = 'הגדירו את זמן המנוחה לכל סבב.';
+      }
       if (config.round_exercise_ids.some((id) => !id || !findExercise(id))) {
         fieldErrors.exercises = 'בחרו תרגיל תקין לכל סבב.';
       }
     } else {
       if (config.round_categories.length < 1) fieldErrors.rounds = 'צריך לפחות סבב אחד.';
-      if (config.work_seconds < 1) fieldErrors.work_seconds = 'הגדירו את זמן העבודה.';
-      if (config.rest_seconds < 0) fieldErrors.rest_seconds = 'הגדירו את זמן המנוחה.';
+      if (config.round_work_seconds.some((seconds) => seconds < 1)) {
+        fieldErrors.work_seconds = 'הגדירו את זמן העבודה לכל סבב.';
+      }
+      if (config.round_rest_seconds.some((seconds) => seconds < 0)) {
+        fieldErrors.rest_seconds = 'הגדירו את זמן המנוחה לכל סבב.';
+      }
       if (config.round_categories.some((category) => !category)) {
         fieldErrors.categories = 'בחרו קבוצת שריר לכל סבב.';
       }
@@ -173,6 +181,14 @@ export async function createTrainingSession(
     }
   }
 
+  return fieldErrors;
+}
+
+/** Creates a weekly training. */
+export async function createTrainingSession(
+  input: SessionPlanInput,
+): Promise<ActionResult<TrainingSession>> {
+  const fieldErrors = validateSessionPlan(input);
   if (Object.keys(fieldErrors).length > 0) {
     return { ok: false, error: 'צריך לתקן את השדות המסומנים.', fieldErrors };
   }
@@ -189,6 +205,38 @@ export async function createTrainingSession(
   revalidatePath('/trainer');
   revalidatePath('/participant');
   return { ok: true, data: created };
+}
+
+/**
+ * Updates an already-published training in place — only allowed while
+ * nobody has logged anything against it yet, so a change never silently
+ * disagrees with results someone already recorded.
+ */
+export async function updateTrainingSession(
+  sessionId: string,
+  input: SessionPlanInput,
+): Promise<ActionResult<TrainingSession>> {
+  const fieldErrors = validateSessionPlan(input);
+  if (Object.keys(fieldErrors).length > 0) {
+    return { ok: false, error: 'צריך לתקן את השדות המסומנים.', fieldErrors };
+  }
+
+  if (await sessionHasLogs(sessionId)) {
+    return { ok: false, error: 'לא ניתן לערוך אימון שכבר יש לו תוצאות רשומות ממתאמנים.' };
+  }
+
+  const updated = await updateSession(sessionId, {
+    ...input,
+    title: input.title.trim(),
+    tracks: input.tracks.map((track) => ({
+      ...track,
+      exercises: track.exercises.filter((exercise) => exercise.name.trim().length > 0),
+    })),
+  });
+
+  revalidatePath('/trainer');
+  revalidatePath('/participant');
+  return { ok: true, data: updated };
 }
 
 /* --------------------------------------------------------- social feed */

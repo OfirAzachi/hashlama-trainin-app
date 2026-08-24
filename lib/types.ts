@@ -333,9 +333,13 @@ export type CatalogKind = 'strength' | 'endurance' | 'warmup' | 'cooldown';
 export interface PointsGameConfig {
   /** Which catalogue the participant picks from. */
   catalog: CatalogKind;
-  /** Interval structure, e.g. 40s work / 20s rest. */
-  work_seconds: number;
-  rest_seconds: number;
+  /**
+   * Work/rest seconds for each round, in order — every interval (including
+   * warm-up and cool-down rounds) can have its own timing instead of one
+   * time applying to the whole game.
+   */
+  round_work_seconds: number[];
+  round_rest_seconds: number[];
   /**
    * The muscle/heart-rate category assigned to each interval, in order — the
    * trainer picks what is worked each round, one entry per round. Only used

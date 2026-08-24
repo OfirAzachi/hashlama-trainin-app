@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 
-import { Card } from '@/components/ui/primitives';
+import { Card, DurationInput } from '@/components/ui/primitives';
+import { cn } from '@/lib/cn';
 import { formatDuration, parseDuration } from '@/lib/format';
 import type { Database } from '@/lib/supabase/database.types';
 import { TEAM_IDS } from '@/lib/types';
@@ -12,6 +13,34 @@ type RosterRow = Database['public']['Tables']['roster']['Row'];
 
 const KM_OPTIONS = [0, 1, 2] as const;
 const OTHER_UNIT = 'אחר';
+
+const DISCLAIMER_TEXT =
+  'לפני שממשיכים: האפליקציה מבוססת על הנתונים שאתם מזינים בעצמכם, וזה מה שהופך את התחרות בין ' +
+  'הצוותים למהנה והוגנת לכולם. אנא הקפידו על דיווח תוצאות אמין ועל שפה נאותה בכל שימוש באתר — ' +
+  'כולל בפיד, בתגובות ובתוצאות שמועלות. מעת לעת ייערכו בדיקות אמינות, כך שכדאי להקפיד מההתחלה. בהצלחה!';
+
+function DisclaimerDialog({ onAcknowledge }: { onAcknowledge: () => void }) {
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="disclaimer-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+    >
+      <div className="w-full max-w-sm rounded-2xl bg-surface p-5 shadow-xl">
+        <h2 id="disclaimer-title" className="text-base font-semibold text-ink">
+          שימו לב
+        </h2>
+        <p dir="rtl" className="mt-2 text-sm leading-relaxed text-muted">
+          {DISCLAIMER_TEXT}
+        </p>
+        <button type="button" className="btn-primary mt-4 w-full justify-center" onClick={onAcknowledge}>
+          הבנתי, ממשיכים
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function OnboardingForm({
   roster,
@@ -29,11 +58,13 @@ export default function OnboardingForm({
   const [customUnit, setCustomUnit] = useState(allUnits.includes(roster.unit) ? '' : roster.unit);
   const [runTime, setRunTime] = useState(roster.final_run_seconds != null ? formatDuration(roster.final_run_seconds) : '');
   const [pushups, setPushups] = useState(roster.pushup_achievement != null ? String(roster.pushup_achievement) : '');
+  const [pushupExempt, setPushupExempt] = useState(false);
   const [score, setScore] = useState(roster.final_score != null ? String(roster.final_score) : '');
   const [kmLevels, setKmLevels] = useState<Set<number>>(new Set(roster.km_levels ?? []));
 
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [disclaimerAcknowledged, setDisclaimerAcknowledged] = useState(false);
 
   const toggleKm = (level: number) => {
     setKmLevels((current) => {
@@ -57,6 +88,11 @@ export default function OnboardingForm({
       return;
     }
 
+    if (roster.pushup_achievement == null && !pushups.trim() && !pushupExempt) {
+      setError('הזינו הישג שכיבות סמיכה, או סמנו שיש לכם פטור ידיים.');
+      return;
+    }
+
     setPending(true);
     setError(null);
     const result = await confirmRosterDetails({
@@ -66,6 +102,7 @@ export default function OnboardingForm({
       unit,
       finalRunSeconds,
       pushupAchievement: pushups.trim() ? Number(pushups) : null,
+      pushupExempt,
       finalScore: score.trim() ? Number(score) : null,
       kmLevels: [...kmLevels],
     });
@@ -75,6 +112,10 @@ export default function OnboardingForm({
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-6 p-6">
+      {!disclaimerAcknowledged ? (
+        <DisclaimerDialog onAcknowledge={() => setDisclaimerAcknowledged(true)} />
+      ) : null}
+
       <div className="text-center">
         <h1 className="text-xl font-bold text-ink">בואו נוודא שהפרטים שלכם נכונים</h1>
         <p className="mt-1 text-sm text-muted">
@@ -90,7 +131,7 @@ export default function OnboardingForm({
           <input id="field-name" className="input" value={name} onChange={(event) => setName(event.target.value)} />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className={cn('grid gap-3', roster.role === 'participant' ? 'grid-cols-2' : 'grid-cols-1')}>
           <div className="space-y-1.5">
             <label htmlFor="field-gender" className="label">
               מין
@@ -109,26 +150,28 @@ export default function OnboardingForm({
             </select>
           </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="field-team" className="label">
-              מס&apos; צוות
-            </label>
-            <select
-              id="field-team"
-              className="input tnum"
-              value={team}
-              onChange={(event) => setTeam(Number(event.target.value))}
-            >
-              <option value="" disabled>
-                בחרו
-              </option>
-              {TEAM_IDS.map((id) => (
-                <option key={id} value={id}>
-                  צוות {id}
+          {roster.role === 'participant' ? (
+            <div className="space-y-1.5">
+              <label htmlFor="field-team" className="label">
+                מס&apos; צוות
+              </label>
+              <select
+                id="field-team"
+                className="input tnum"
+                value={team}
+                onChange={(event) => setTeam(Number(event.target.value))}
+              >
+                <option value="" disabled>
+                  בחרו
                 </option>
-              ))}
-            </select>
-          </div>
+                {TEAM_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    צוות {id}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
         </div>
 
         <div className="space-y-1.5">
@@ -174,12 +217,12 @@ export default function OnboardingForm({
               </p>
             ) : (
               <>
-                <input
+                <DurationInput
                   id="field-run"
                   className="input tnum"
                   placeholder="13:50 (אופציונלי)"
                   value={runTime}
-                  onChange={(event) => setRunTime(event.target.value)}
+                  onValueChange={setRunTime}
                 />
                 <p className="text-xs text-muted">אין תוצאה רשומה — אפשר להשלים, או להשאיר ריק.</p>
               </>
@@ -199,30 +242,43 @@ export default function OnboardingForm({
                   id="field-pushups"
                   type="number"
                   min={0}
-                  placeholder="אופציונלי"
+                  placeholder={pushupExempt ? 'אין צורך' : undefined}
+                  disabled={pushupExempt}
                   className="input tnum"
                   value={pushups}
                   onChange={(event) => setPushups(event.target.value)}
                 />
-                <p className="text-xs text-muted">אין תוצאה רשומה — אפשר להשלים, או להשאיר ריק.</p>
+                <label className="flex items-center gap-1.5 text-xs text-muted">
+                  <input
+                    type="checkbox"
+                    checked={pushupExempt}
+                    onChange={(event) => {
+                      setPushupExempt(event.target.checked);
+                      if (event.target.checked) setPushups('');
+                    }}
+                  />
+                  יש לי פטור ידיים
+                </label>
               </>
             )}
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <label htmlFor="field-score" className="label">
-            ציון סופי
-          </label>
-          <input
-            id="field-score"
-            type="number"
-            min={0}
-            className="input tnum"
-            value={score}
-            onChange={(event) => setScore(event.target.value)}
-          />
-        </div>
+        {roster.final_score != null ? (
+          <div className="space-y-1.5">
+            <label htmlFor="field-score" className="label">
+              ציון סופי
+            </label>
+            <input
+              id="field-score"
+              type="number"
+              min={0}
+              className="input tnum"
+              value={score}
+              onChange={(event) => setScore(event.target.value)}
+            />
+          </div>
+        ) : null}
 
         <div className="space-y-1.5">
           <p className="label">כמ</p>

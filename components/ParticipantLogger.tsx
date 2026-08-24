@@ -17,7 +17,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useRef, useState } from 'react';
 
 import { submitSessionLog, uploadSessionMedia } from '@/app/actions';
-import { Badge, Card, CardHeader, GroupBadge } from '@/components/ui/primitives';
+import { Badge, Card, CardHeader, DurationInput, GroupBadge } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 import { METRIC_UNITS, formatDate, formatDuration, parseDuration } from '@/lib/format';
 import type {
@@ -288,15 +288,26 @@ export default function ParticipantLogger({
                   ) : null}
 
                   <div className="relative flex-1">
-                    <input
-                      id={exercise.id}
-                      className="input h-11 pe-14 text-base tnum"
-                      inputMode={exercise.metric_type === 'time_seconds' ? 'text' : 'decimal'}
-                      placeholder={placeholderFor(exercise)}
-                      value={draft}
-                      onChange={(event) => setRaw(exercise.id, event.target.value)}
-                      aria-describedby={`${exercise.id}-hint`}
-                    />
+                    {exercise.metric_type === 'time_seconds' ? (
+                      <DurationInput
+                        id={exercise.id}
+                        className="input h-11 pe-14 text-base tnum"
+                        placeholder={placeholderFor(exercise)}
+                        value={draft}
+                        onValueChange={(value) => setRaw(exercise.id, value)}
+                        aria-describedby={`${exercise.id}-hint`}
+                      />
+                    ) : (
+                      <input
+                        id={exercise.id}
+                        className="input h-11 pe-14 text-base tnum"
+                        inputMode="decimal"
+                        placeholder={placeholderFor(exercise)}
+                        value={draft}
+                        onChange={(event) => setRaw(exercise.id, event.target.value)}
+                        aria-describedby={`${exercise.id}-hint`}
+                      />
+                    )}
                     <span
                       id={`${exercise.id}-hint`}
                       className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs text-muted"

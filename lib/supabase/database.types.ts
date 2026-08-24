@@ -516,29 +516,29 @@ export type Database = {
         Row: {
           allowed_levels: number[]
           catalog: Database["public"]["Enums"]["catalog_kind"]
-          rest_seconds: number
           round_categories: Database["public"]["Enums"]["strength_category"][]
           round_exercise_ids: string[]
+          round_rest_seconds: number[]
+          round_work_seconds: number[]
           session_id: string
-          work_seconds: number
         }
         Insert: {
           allowed_levels?: number[]
           catalog?: Database["public"]["Enums"]["catalog_kind"]
-          rest_seconds?: number
           round_categories?: Database["public"]["Enums"]["strength_category"][]
           round_exercise_ids?: string[]
+          round_rest_seconds?: number[]
+          round_work_seconds?: number[]
           session_id: string
-          work_seconds?: number
         }
         Update: {
           allowed_levels?: number[]
           catalog?: Database["public"]["Enums"]["catalog_kind"]
-          rest_seconds?: number
           round_categories?: Database["public"]["Enums"]["strength_category"][]
           round_exercise_ids?: string[]
+          round_rest_seconds?: number[]
+          round_work_seconds?: number[]
           session_id?: string
-          work_seconds?: number
         }
         Relationships: [
           {

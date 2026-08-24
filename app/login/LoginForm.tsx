@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 import { Card } from '@/components/ui/primitives';
 import { createClient } from '@/lib/supabase/client';
-import { checkPersonalNumberForSignup, signIn } from './actions';
+import { checkPersonalNumberForSignup } from './actions';
 
 function GoogleIcon() {
   return (
@@ -40,18 +40,9 @@ const OAUTH_ERROR_MESSAGE =
 
 export default function LoginForm({ next, initialError }: { next: string; initialError?: string }) {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
-  const [pending, setPending] = useState(false);
   const [googlePending, setGooglePending] = useState(false);
   const [error, setError] = useState<string | null>(initialError ? OAUTH_ERROR_MESSAGE : null);
   const [signupPersonalNumber, setSignupPersonalNumber] = useState('');
-
-  const handleSignIn = async (formData: FormData) => {
-    setPending(true);
-    setError(null);
-    const result = await signIn(formData);
-    setPending(false);
-    if (result && !result.ok) setError(result.error);
-  };
 
   const handleSignInWithGoogle = () => {
     setError(null);
@@ -119,56 +110,17 @@ export default function LoginForm({ next, initialError }: { next: string; initia
       <Card className="card-pad">
         {mode === 'signin' ? (
           <div className="space-y-4">
-            <form action={handleSignIn} className="space-y-4">
-              <input type="hidden" name="next" value={next} />
-              <div className="space-y-1.5">
-                <label htmlFor="personal_number" className="text-sm font-medium text-ink">
-                  מספר אישי
-                </label>
-                <input
-                  id="personal_number"
-                  name="personal_number"
-                  type="text"
-                  inputMode="numeric"
-                  required
-                  className="input tnum"
-                  autoComplete="off"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label htmlFor="password" className="text-sm font-medium text-ink">
-                  סיסמה
-                </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  className="input"
-                  autoComplete="current-password"
-                />
-              </div>
-              {error ? (
-                <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
-                  {error}
-                </p>
-              ) : null}
-              <button type="submit" className="btn-primary w-full justify-center" disabled={pending}>
-                {pending ? 'מתחברת…' : 'התחברות'}
-              </button>
-            </form>
-
-            <div className="flex items-center gap-3">
-              <div className="h-px flex-1 bg-line" />
-              <span className="text-xs text-muted">או</span>
-              <div className="h-px flex-1 bg-line" />
-            </div>
+            {error ? (
+              <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+                {error}
+              </p>
+            ) : null}
 
             <button
               type="button"
               onClick={handleSignInWithGoogle}
               disabled={googlePending}
-              className="btn-secondary w-full justify-center gap-2"
+              className="btn-primary w-full justify-center gap-2"
             >
               <GoogleIcon />
               {googlePending ? 'מעבירה ל-Google…' : 'המשך עם Google'}

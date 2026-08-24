@@ -17,7 +17,7 @@ import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { submitRunningWorkout } from '@/app/actions';
-import { Badge, Card, CardHeader } from '@/components/ui/primitives';
+import { Badge, Card, CardHeader, DurationInput } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 import { formatDate, formatDuration, paceFromRun, parseDuration, secondsFromPace } from '@/lib/format';
 import { PACE_LABELS, scoreSegment, segmentDistance, segmentSummary, segmentsForGroup } from '@/lib/running';
@@ -282,24 +282,22 @@ export default function RunningLogger({
                   <div className="grid gap-2 sm:grid-cols-2">
                     <label className="space-y-1.5">
                       <span className="text-sm font-medium text-ink">זמן שלקח (דק:שנ)</span>
-                      <input
+                      <DurationInput
                         className="input h-11 text-center tnum"
-                        inputMode="decimal"
                         placeholder="0:00"
                         aria-label={`זמן שלקח ב${segment.label}`}
                         value={timeValue}
-                        onChange={(event) => setSegmentInput(segment.id, 'time', event.target.value)}
+                        onValueChange={(value) => setSegmentInput(segment.id, 'time', value)}
                       />
                     </label>
                     <label className="space-y-1.5">
                       <span className="text-sm font-medium text-ink">קצב בפועל (דק:שנ / ק״מ)</span>
-                      <input
+                      <DurationInput
                         className="input h-11 text-center tnum"
-                        inputMode="decimal"
                         placeholder="0:00"
                         aria-label={`קצב בפועל ב${segment.label}`}
                         value={paceValue}
-                        onChange={(event) => setSegmentInput(segment.id, 'pace', event.target.value)}
+                        onValueChange={(value) => setSegmentInput(segment.id, 'pace', value)}
                       />
                     </label>
                   </div>

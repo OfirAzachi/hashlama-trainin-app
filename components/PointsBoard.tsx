@@ -8,7 +8,7 @@ import { Avatar, Badge, Card, CardHeader } from '@/components/ui/primitives';
 import { formatDate } from '@/lib/format';
 import { GROUPS_BY_ID } from '@/lib/groups';
 import { groupPointsBreakdown, sessionLeaderboard } from '@/lib/points';
-import { CATALOG_META, findExercise, roundCount } from '@/lib/catalog';
+import { CATALOG_META, describeRoundTiming, findExercise, roundCount } from '@/lib/catalog';
 import type { Participant, StrengthLog, TrainingSession, User } from '@/lib/types';
 
 /**
@@ -108,7 +108,7 @@ export default function PointsBoard({
           ) : null}
           <span className="text-xs text-muted tnum">
             {formatDate(session.date)} · {session.points_game ? roundCount(session.points_game) : 0} סבבים ·{' '}
-            {session.points_game?.work_seconds} / {session.points_game?.rest_seconds} שנ׳
+            {session.points_game ? describeRoundTiming(session.points_game) : ''}
           </span>
         </div>
 

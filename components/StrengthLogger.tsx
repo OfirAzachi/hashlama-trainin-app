@@ -31,6 +31,7 @@ import {
   CATALOG_META,
   catalogCategories,
   catalogExercises,
+  describeRoundTiming,
   findCategory,
   findExercise,
   hasFixedExercises,
@@ -59,15 +60,18 @@ function IntervalTimer({
   rounds,
   onRoundStart,
 }: {
-  workSeconds: number;
-  restSeconds: number;
+  /** One entry per round — an interval's timing is its own, not shared. */
+  workSeconds: number[];
+  restSeconds: number[];
   rounds: number;
   onRoundStart: (round: number) => void;
 }) {
   const [running, setRunning] = useState(false);
   const [phase, setPhase] = useState<'work' | 'rest'>('work');
   const [round, setRound] = useState(0);
-  const [remaining, setRemaining] = useState(workSeconds);
+  const workFor = (r: number) => workSeconds[r] ?? workSeconds[0] ?? 40;
+  const restFor = (r: number) => restSeconds[r] ?? restSeconds[0] ?? 20;
+  const [remaining, setRemaining] = useState(() => workFor(0));
   const onRoundStartRef = useRef(onRoundStart);
   onRoundStartRef.current = onRoundStart;
 
@@ -77,29 +81,32 @@ function IntervalTimer({
       setRemaining((current) => {
         if (current > 1) return current - 1;
         // Phase finished: work -> rest, rest -> next round's work.
+        let nextRound = round;
         setPhase((currentPhase) => {
           if (currentPhase === 'work') return 'rest';
           setRound((currentRound) => {
             const next = Math.min(rounds - 1, currentRound + 1);
+            nextRound = next;
             onRoundStartRef.current(next);
             return next;
           });
           return 'work';
         });
-        return phase === 'work' ? restSeconds : workSeconds;
+        return phase === 'work' ? restFor(round) : workFor(nextRound);
       });
     }, 1000);
     return () => window.clearInterval(id);
-  }, [running, phase, workSeconds, restSeconds, rounds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, phase, round, rounds]);
 
   const reset = () => {
     setRunning(false);
     setPhase('work');
     setRound(0);
-    setRemaining(workSeconds);
+    setRemaining(workFor(0));
   };
 
-  const total = phase === 'work' ? workSeconds : restSeconds;
+  const total = phase === 'work' ? workFor(round) : restFor(round);
 
   return (
     <div
@@ -148,7 +155,7 @@ function IntervalTimer({
         />
       </div>
       <p className="mt-2 text-xs text-muted tnum">
-        {workSeconds} שנ׳ עבודה · {restSeconds} שנ׳ מנוחה ורישום התוצאה
+        {workFor(round)} שנ׳ עבודה · {restFor(round)} שנ׳ מנוחה ורישום התוצאה
       </p>
     </div>
   );
@@ -419,15 +426,8 @@ export default function StrengthLogger({
             {session.workout_instructions}
           </p>
 
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-xl bg-elevated p-2.5">
-              <p className="text-lg font-semibold tnum text-ink">{config.work_seconds}s</p>
-              <p className="text-[11px] text-muted">עבודה</p>
-            </div>
-            <div className="rounded-xl bg-elevated p-2.5">
-              <p className="text-lg font-semibold tnum text-ink">{config.rest_seconds}s</p>
-              <p className="text-[11px] text-muted">מנוחה ורישום</p>
-            </div>
+          <p className="tnum text-xs text-muted">{describeRoundTiming(config)}</p>
+          <div className="grid grid-cols-1 gap-2 text-center">
             <div className="rounded-xl bg-elevated p-2.5">
               <p className="text-lg font-semibold tnum text-ink">{roundCount(config)}</p>
               <p className="text-[11px] text-muted">סבבים</p>
@@ -444,8 +444,8 @@ export default function StrengthLogger({
 
       {/* ---------------------------------------------------- timer */}
       <IntervalTimer
-        workSeconds={config.work_seconds}
-        restSeconds={config.rest_seconds}
+        workSeconds={config.round_work_seconds}
+        restSeconds={config.round_rest_seconds}
         rounds={roundCount(config)}
         onRoundStart={(round) => {
           const element = document.getElementById(`round-${round}`);

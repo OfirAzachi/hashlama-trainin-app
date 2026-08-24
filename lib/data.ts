@@ -116,8 +116,8 @@ function mapSession(row: any): TrainingSession {
   const points_game: PointsGameConfig | null = configRow
     ? {
         catalog: configRow.catalog,
-        work_seconds: configRow.work_seconds,
-        rest_seconds: configRow.rest_seconds,
+        round_work_seconds: configRow.round_work_seconds ?? [],
+        round_rest_seconds: configRow.round_rest_seconds ?? [],
         round_categories: configRow.round_categories ?? [],
         round_exercise_ids: configRow.round_exercise_ids ?? [],
         allowed_levels: configRow.allowed_levels ?? [],
@@ -461,8 +461,8 @@ export async function insertSession(input: SessionPlanInput): Promise<TrainingSe
     const { error } = await supabase.from('strength_configs').insert({
       session_id: sessionId,
       catalog: input.points_game.catalog,
-      work_seconds: input.points_game.work_seconds,
-      rest_seconds: input.points_game.rest_seconds,
+      round_work_seconds: input.points_game.round_work_seconds,
+      round_rest_seconds: input.points_game.round_rest_seconds,
       round_categories: input.points_game.round_categories,
       round_exercise_ids: input.points_game.round_exercise_ids,
       allowed_levels: input.points_game.allowed_levels,
@@ -522,6 +522,119 @@ export async function insertSession(input: SessionPlanInput): Promise<TrainingSe
   const created = await getSessions();
   const match = created.find((session) => session.id === sessionId);
   if (!match) throw new Error('Session was created but could not be re-fetched.');
+  return match;
+}
+
+/** Whether anyone has logged anything against this session — editing is only safe before that. */
+export async function sessionHasLogs(sessionId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const [session, strength, running] = await Promise.all([
+    supabase.from('session_logs').select('id', { count: 'exact', head: true }).eq('session_id', sessionId),
+    supabase.from('strength_logs').select('id', { count: 'exact', head: true }).eq('session_id', sessionId),
+    supabase.from('running_logs').select('id', { count: 'exact', head: true }).eq('session_id', sessionId),
+  ]);
+  return (session.count ?? 0) + (strength.count ?? 0) + (running.count ?? 0) > 0;
+}
+
+/**
+ * Replaces a session's structure in place — only ever called once the
+ * caller has confirmed nobody has logged against it yet, so clearing the
+ * old segments/rounds/tracks and reinserting is safe.
+ */
+export async function updateSession(sessionId: string, input: SessionPlanInput): Promise<TrainingSession> {
+  const supabase = await createClient();
+
+  const { error: sessionError } = await supabase
+    .from('training_sessions')
+    .update({
+      date: input.date,
+      title: input.title,
+      workout_instructions: input.workout_instructions,
+      week_index: input.week_index,
+      training_type: input.training_type,
+    })
+    .eq('id', sessionId);
+  if (sessionError) throw sessionError;
+
+  await supabase.from('strength_configs').delete().eq('session_id', sessionId);
+  await supabase.from('running_segments').delete().eq('session_id', sessionId);
+  await supabase.from('running_configs').delete().eq('session_id', sessionId);
+  const { data: oldTracks } = await supabase.from('session_tracks').select('id').eq('session_id', sessionId);
+  if (oldTracks && oldTracks.length > 0) {
+    await supabase
+      .from('track_exercises')
+      .delete()
+      .in(
+        'track_id',
+        oldTracks.map((track) => track.id),
+      );
+    await supabase.from('session_tracks').delete().eq('session_id', sessionId);
+  }
+
+  if (input.points_game) {
+    const { error } = await supabase.from('strength_configs').insert({
+      session_id: sessionId,
+      catalog: input.points_game.catalog,
+      round_work_seconds: input.points_game.round_work_seconds,
+      round_rest_seconds: input.points_game.round_rest_seconds,
+      round_categories: input.points_game.round_categories,
+      round_exercise_ids: input.points_game.round_exercise_ids,
+      allowed_levels: input.points_game.allowed_levels,
+    });
+    if (error) throw error;
+  }
+
+  if (input.running) {
+    const { error: configError } = await supabase
+      .from('running_configs')
+      .insert({ session_id: sessionId, mode: input.running.mode });
+    if (configError) throw configError;
+
+    if (input.running.segments.length > 0) {
+      const { error: segmentsError } = await supabase.from('running_segments').insert(
+        input.running.segments.map((segment, index) => ({
+          session_id: sessionId,
+          label: segment.label,
+          target_team: targetToDb(segment.target_group),
+          position: index,
+          repeats: segment.repeats,
+          distance_meters: segment.distance_meters,
+          pace_category: segment.pace_category,
+          recovery_seconds: segment.recovery_seconds,
+        })),
+      );
+      if (segmentsError) throw segmentsError;
+    }
+  }
+
+  const tracks = input.tracks.filter((track) => track.exercises.length > 0);
+  for (const track of tracks) {
+    const { data: trackRow, error: trackError } = await supabase
+      .from('session_tracks')
+      .insert({ session_id: sessionId, target_team: targetToDb(track.target_group), label: track.label })
+      .select()
+      .single();
+    if (trackError) throw trackError;
+
+    const exercises = track.exercises.filter((exercise) => exercise.name.trim().length > 0);
+    if (exercises.length > 0) {
+      const { error: exercisesError } = await supabase.from('track_exercises').insert(
+        exercises.map((exercise, index) => ({
+          track_id: trackRow.id,
+          name: exercise.name,
+          metric_type: exercise.metric_type,
+          prescription: exercise.prescription,
+          target_value: exercise.target_value,
+          position: index,
+        })),
+      );
+      if (exercisesError) throw exercisesError;
+    }
+  }
+
+  const updated = await getSessions();
+  const match = updated.find((session) => session.id === sessionId);
+  if (!match) throw new Error('Session was updated but could not be re-fetched.');
   return match;
 }
 

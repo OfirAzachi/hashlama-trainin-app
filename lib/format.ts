@@ -36,6 +36,27 @@ export function parseDuration(input: string): number | null {
   return frac ? seconds + Number(`0.${frac}`) : seconds;
 }
 
+/**
+ * Normalizes whatever someone just typed into a duration field into
+ * "mm:ss" — for display, once they're done typing (call this on blur, not
+ * on every keystroke). Digits typed with no separator are read as MMSS
+ * concatenated, not raw seconds: "1205" -> "12:05", "45" -> "0:45". A
+ * "mm:ss" string is just re-normalized (so "12:75" overflows to "13:15").
+ * Anything unparseable is left exactly as typed, so a still-in-progress or
+ * genuinely invalid entry never gets silently mangled.
+ */
+export function normalizeDurationInput(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (/^\d+$/.test(trimmed)) {
+    const secondsPart = trimmed.slice(-2).padStart(2, '0');
+    const minutesPart = trimmed.slice(0, -2) || '0';
+    return formatDuration(Number(minutesPart) * 60 + Number(secondsPart));
+  }
+  const seconds = parseDuration(trimmed);
+  return seconds != null ? formatDuration(seconds) : trimmed;
+}
+
 /** Signed duration, e.g. -95 -> "−1:35". */
 export function formatSignedDuration(seconds: number): string {
   const sign = seconds < 0 ? '−' : '+';

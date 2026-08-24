@@ -1,8 +1,8 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import type { ChangeEvent, FocusEvent, InputHTMLAttributes, ReactNode } from 'react';
 import { cn } from '@/lib/cn';
-import { initials } from '@/lib/format';
+import { initials, normalizeDurationInput } from '@/lib/format';
 import { GROUPS_BY_ID } from '@/lib/groups';
 import type { GroupId } from '@/lib/types';
 
@@ -242,6 +242,40 @@ export function Segmented<T extends string | number>({
         );
       })}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------ duration */
+
+/**
+ * A "mm:ss" text input — anywhere a time gets recorded, this is what to use.
+ * Typing stays raw so the cursor never jumps; on blur it snaps to "mm:ss"
+ * (plain digits read as MMSS, e.g. "1205" -> "12:05"), so the value always
+ * reads back the same way it'll be stored.
+ */
+export function DurationInput({
+  value,
+  onValueChange,
+  onBlur,
+  className,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value' | 'type'> & {
+  value: string;
+  onValueChange: (value: string) => void;
+}) {
+  return (
+    <input
+      {...props}
+      type="text"
+      inputMode="numeric"
+      className={className}
+      value={value}
+      onChange={(event: ChangeEvent<HTMLInputElement>) => onValueChange(event.target.value)}
+      onBlur={(event: FocusEvent<HTMLInputElement>) => {
+        onValueChange(normalizeDurationInput(event.target.value));
+        onBlur?.(event);
+      }}
+    />
   );
 }
 

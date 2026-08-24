@@ -98,19 +98,40 @@ function PostCard({ post, viewer }: { post: FeedPost; viewer: User }) {
   };
 
   const visibleComments = showAllComments ? comments : comments.slice(-2);
+  const isStaffPost = post.author.role === 'trainer';
 
   return (
-    <Card as="article" className="overflow-hidden">
+    <Card
+      as="article"
+      className={cn(
+        'overflow-hidden',
+        isStaffPost && 'border-2 border-amber-400/70 shadow-[0_0_0_1px_rgba(251,191,36,0.25)] dark:border-amber-400/50',
+      )}
+    >
       {/* author */}
-      <div className="flex items-center gap-3 px-4 py-3">
-        <Avatar name={post.author.name} groupId={post.author.team} />
+      <div
+        className={cn(
+          'flex items-center gap-3 px-4 py-3',
+          isStaffPost && 'bg-gradient-to-l from-amber-400/15 via-amber-400/5 to-transparent',
+        )}
+      >
+        <Avatar name={post.author.name} groupId={post.author.team} size={isStaffPost ? 'lg' : 'md'} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-ink">{post.author.name}</p>
+          <p className={cn('truncate font-semibold text-ink', isStaffPost ? 'text-base' : 'text-sm')}>
+            {post.author.name}
+          </p>
           <p className="truncate text-xs text-muted">
             {post.session ? `שבוע ${post.session.week_index} · ${post.session.title}` : 'אימון'}
           </p>
         </div>
-        {post.author.team ? <GroupBadge groupId={post.author.team} short /> : null}
+        {isStaffPost ? (
+          <Badge tone="warning" className="shrink-0 gap-1 text-sm font-bold">
+            <Sparkles aria-hidden className="h-3.5 w-3.5" />
+            קא״ג
+          </Badge>
+        ) : post.author.team ? (
+          <GroupBadge groupId={post.author.team} short />
+        ) : null}
       </div>
 
       <PostImage src={post.media.image_url} alt={post.media.caption ?? `תמונת אימון של ${post.author.name}`} />

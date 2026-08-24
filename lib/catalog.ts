@@ -106,6 +106,20 @@ export function roundCount(config: Pick<PointsGameConfig, 'catalog' | 'round_cat
     : config.round_categories.length;
 }
 
+/**
+ * "40 שנ׳ עבודה / 20 שנ׳ מנוחה" when every round shares the same timing,
+ * "עבודה ומנוחה משתנות בין הסבבים" when a trainer gave rounds different
+ * times — never shows a single misleading number for a mixed set.
+ */
+export function describeRoundTiming(config: Pick<PointsGameConfig, 'round_work_seconds' | 'round_rest_seconds'>): string {
+  const work = config.round_work_seconds;
+  const rest = config.round_rest_seconds;
+  const uniformWork = work.length > 0 && work.every((seconds) => seconds === work[0]);
+  const uniformRest = rest.length > 0 && rest.every((seconds) => seconds === rest[0]);
+  if (uniformWork && uniformRest) return `${work[0]} שנ׳ עבודה / ${rest[0]} שנ׳ מנוחה`;
+  return 'עבודה ומנוחה משתנות בין הסבבים';
+}
+
 /** Fills N rounds by cycling through a catalogue's exercises in order. */
 export function cycleExercises(kind: CatalogKind, count: number): string[] {
   const exercises = catalogExercises(kind);

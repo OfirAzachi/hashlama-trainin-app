@@ -25,7 +25,7 @@ import StrengthLogger from '@/components/StrengthLogger';
 import { Badge, Card } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 import { formatDate, formatMetric } from '@/lib/format';
-import { CATALOG_META, findExercise, hasFixedExercises, roundCount } from '@/lib/catalog';
+import { CATALOG_META, describeRoundTiming, findExercise, hasFixedExercises, roundCount } from '@/lib/catalog';
 import { segmentSummary, segmentsForGroup } from '@/lib/running';
 import type { Participant, TrainingCard, TrainingStatus } from '@/lib/types';
 
@@ -212,8 +212,7 @@ export default function TrainingsList({
           {strength && card.session.points_game ? (
             <div className="space-y-2">
               <p className="text-sm text-muted tnum">
-                {roundCount(card.session.points_game)} סבבים · {card.session.points_game.work_seconds} שנ׳ עבודה /{' '}
-                {card.session.points_game.rest_seconds} שנ׳ מנוחה ·{' '}
+                {roundCount(card.session.points_game)} סבבים · {describeRoundTiming(card.session.points_game)} ·{' '}
                 {hasFixedExercises(card.session.points_game.catalog)
                   ? 'המאמנת קבעה תרגיל לכל סבב'
                   : 'המאמנת קבעה קבוצת שריר לכל סבב'}
