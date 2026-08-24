@@ -1,0 +1,9 @@
+node_modules
+.next
+out
+.env*.local
+next-env.d.ts
+*.tsbuildinfo
+
+# Real personal data — never commit an imported roster dump.
+scripts/roster-import.json
