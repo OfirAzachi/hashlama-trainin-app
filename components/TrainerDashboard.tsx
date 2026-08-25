@@ -66,7 +66,7 @@ function TrainerGroupMembership({ trainer }: { trainer: User }) {
     setTeam(next);
     startTransition(async () => {
       await joinGroupAsTrainer(trainer.id, next || null);
-      router.refresh();
+      startTransition(() => router.refresh());
     });
   };
 

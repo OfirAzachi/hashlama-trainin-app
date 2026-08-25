@@ -17,7 +17,7 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import ExerciseAnimation from '@/components/ExerciseAnimation';
@@ -395,7 +395,7 @@ export default function StrengthLogger({
     onSuccess: (created) => {
       setError(null);
       setSaved(created.reduce((sum, log) => sum + log.points, 0));
-      router.refresh();
+      startTransition(() => router.refresh());
     },
     onError: (mutationError: Error) => {
       setSaved(null);

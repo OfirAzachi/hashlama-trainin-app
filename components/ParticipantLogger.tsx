@@ -14,7 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useMemo, useRef, useState } from 'react';
+import { startTransition, useMemo, useRef, useState } from 'react';
 
 import { submitSessionLog, uploadSessionMedia } from '@/app/actions';
 import { Badge, Card, CardHeader, DurationInput, GroupBadge } from '@/components/ui/primitives';
@@ -155,7 +155,10 @@ export default function ParticipantLogger({
       setSavedCount(created.length);
       setDrafts({});
       setNotes('');
-      router.refresh();
+      // A fresh startTransition here — react-query's onSuccess doesn't run
+      // inside one, so router.refresh() would otherwise be treated as an
+      // urgent update and trigger the route's full loading fallback.
+      startTransition(() => router.refresh());
     },
     onError: (mutationError: Error) => {
       setSavedCount(0);
@@ -182,7 +185,7 @@ export default function ParticipantLogger({
       setPhotoTag('');
       setPhotoSaved(true);
       if (fileInputRef.current) fileInputRef.current.value = '';
-      router.refresh();
+      startTransition(() => router.refresh());
     },
     onError: (mutationError: Error) => setError(mutationError.message),
   });

@@ -13,7 +13,7 @@ import {
   TriangleAlert,
   Trophy,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { startTransition, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { submitRunningWorkout } from '@/app/actions';
@@ -152,7 +152,7 @@ export default function RunningLogger({
     onSuccess: (created) => {
       setError(null);
       setSaved(created.reduce((sum, log) => sum + log.points, 0));
-      router.refresh();
+      startTransition(() => router.refresh());
     },
     onError: (mutationError: Error) => {
       setSaved(null);

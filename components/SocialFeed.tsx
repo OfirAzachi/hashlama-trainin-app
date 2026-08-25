@@ -428,7 +428,12 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
       setCaption(result.data.caption ?? '');
       editMention.reset();
       setIsEditing(false);
-      router.refresh();
+      // A fresh startTransition here (not just the one already wrapping this
+      // async callback) — React only treats router.refresh() as a transition
+      // (background update, no route-level loading fallback) if it's called
+      // synchronously inside a startTransition call; the outer one stopped
+      // covering it the moment we crossed the `await` above.
+      startSaveTransition(() => router.refresh());
     });
   };
 
@@ -441,7 +446,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
         return;
       }
       setIsDeleted(true);
-      router.refresh();
+      startDeleteTransition(() => router.refresh());
     });
   };
 
@@ -452,7 +457,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
         likedByMe: !likeState.likedByMe,
       });
       await toggleMediaLike(post.media.id, viewer.id);
-      router.refresh();
+      startTransition(() => router.refresh());
     });
   };
 
@@ -466,7 +471,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
       const result = await addMediaComment(post.media.id, viewer.id, finalBody);
       if (result.ok) {
         setComments((current) => [...current, { comment: result.data, author: viewer }]);
-        router.refresh();
+        startTransition(() => router.refresh());
       }
     });
   };
@@ -782,7 +787,7 @@ function Composer({ viewer, sessions, users }: { viewer: User; sessions: Trainin
         return;
       }
       reset();
-      router.refresh();
+      startTransition(() => router.refresh());
     });
   };
 

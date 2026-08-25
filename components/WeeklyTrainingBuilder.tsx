@@ -27,7 +27,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { startTransition, useMemo, useState } from 'react';
 
 import { createTrainingSession, deleteTrainingSession, updateTrainingSession } from '@/app/actions';
 import { Badge, Card } from '@/components/ui/primitives';
@@ -674,7 +674,7 @@ export default function WeeklyTrainingBuilder({
         // trainer was fixing something specific, not starting a new training.
         setEditingSessionId(null);
         setEditingSessionTitle('');
-        router.refresh();
+        startTransition(() => router.refresh());
         return;
       }
       setTitle(`שבוע ${weekIndex + 1} — `);
@@ -689,7 +689,7 @@ export default function WeeklyTrainingBuilder({
       setAttachWarmup(false);
       setAttachCooldown(false);
       setLoadedFromSessionId('');
-      router.refresh();
+      startTransition(() => router.refresh());
     },
   });
 
@@ -700,7 +700,7 @@ export default function WeeklyTrainingBuilder({
     },
     onSuccess: () => {
       setLoadedFromSessionId('');
-      router.refresh();
+      startTransition(() => router.refresh());
     },
   });
 
