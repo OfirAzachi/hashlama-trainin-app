@@ -121,12 +121,17 @@ export interface SessionLog {
 
 export interface SessionMedia {
   id: string;
-  session_id: string;
+  /** Null for a trainer's general post — not tied to any specific training. */
+  session_id: string | null;
   user_id: string;
   image_url: string;
   caption: string | null;
   /** Free-form tags, typically the exercise the photo documents. */
   tags: string[];
+  /** Set for a non-image file upload (PDF, doc, …); null for photos. */
+  mime_type: string | null;
+  /** Original filename, shown for non-image files. */
+  file_name: string | null;
   uploaded_at: string; // ISO timestamp
 }
 
@@ -187,12 +192,16 @@ export interface LogEntryInput {
 }
 
 export interface MediaUploadInput {
-  session_id: string;
+  /** Omit (or null) for a trainer's general post — only a trainer may do this. */
+  session_id?: string | null;
   user_id: string;
   /** Data URL in mock mode; Supabase Storage public URL in production. */
   image_url: string;
   caption?: string;
   tags?: string[];
+  /** Set for a non-image file upload. */
+  mime_type?: string | null;
+  file_name?: string | null;
 }
 
 export interface SessionPlanInput {

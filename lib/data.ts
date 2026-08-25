@@ -308,6 +308,8 @@ export async function getMedia(filters?: {
     image_url: row.image_url,
     caption: row.caption,
     tags: row.tags ?? [],
+    mime_type: row.mime_type,
+    file_name: row.file_name,
     uploaded_at: row.uploaded_at,
   }));
 
@@ -415,11 +417,13 @@ export async function insertMedia(input: MediaUploadInput): Promise<SessionMedia
   const { data, error } = await supabase
     .from('session_media')
     .insert({
-      session_id: input.session_id,
+      session_id: input.session_id ?? null,
       user_id: input.user_id,
       image_url: input.image_url,
       caption: input.caption?.trim() ? input.caption.trim() : null,
       tags: input.tags ?? [],
+      mime_type: input.mime_type ?? null,
+      file_name: input.file_name ?? null,
     })
     .select()
     .single();
@@ -431,6 +435,8 @@ export async function insertMedia(input: MediaUploadInput): Promise<SessionMedia
     image_url: data.image_url,
     caption: data.caption,
     tags: data.tags ?? [],
+    mime_type: data.mime_type,
+    file_name: data.file_name,
     uploaded_at: data.uploaded_at,
   };
 }
@@ -669,6 +675,8 @@ export async function getFeed(viewerId: string, filters?: { group?: GroupId | 'a
         image_url: item.image_url,
         caption: item.caption,
         tags: item.tags ?? [],
+        mime_type: item.mime_type,
+        file_name: item.file_name,
         uploaded_at: item.uploaded_at,
       };
       const likes = (likeRows ?? []).filter((like: any) => like.media_id === item.id);

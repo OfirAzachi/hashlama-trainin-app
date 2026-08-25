@@ -2,11 +2,13 @@
 
 import {
   Camera,
+  FileText,
   Heart,
   ImageOff,
   ImagePlus,
   Loader2,
   MessageCircle,
+  Paperclip,
   Send,
   Sparkles,
   X,
@@ -19,7 +21,19 @@ import { Avatar, Badge, Card, EmptyState, GroupBadge } from '@/components/ui/pri
 import { cn } from '@/lib/cn';
 import { compactCount, formatRelativeTime } from '@/lib/format';
 import { GROUP_LIST } from '@/lib/groups';
-import type { FeedPost, GroupId, TrainingSession, User } from '@/lib/types';
+import type { FeedPost, GroupId, SessionMedia, TrainingSession, User } from '@/lib/types';
+
+const ALLOWED_FILE_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+];
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 interface SocialFeedProps {
   posts: FeedPost[];
@@ -56,6 +70,32 @@ function PostImage({ src, alt }: { src: string; alt: string }) {
       className="aspect-square w-full bg-elevated object-cover"
     />
   );
+}
+
+/** A trainer's non-image upload (PDF, doc…) — a download card, not a broken photo. */
+function PostFile({ media }: { media: SessionMedia }) {
+  return (
+    <a
+      href={media.image_url}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center gap-3 bg-elevated px-4 py-4 transition-colors hover:bg-elevated/70"
+    >
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface text-accent">
+        <FileText aria-hidden className="h-5 w-5" />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+        {media.file_name ?? 'קובץ מצורף'}
+      </span>
+      <span className="shrink-0 text-xs text-accent">פתיחה</span>
+    </a>
+  );
+}
+
+/** Picks a photo or a file card, whichever this post actually is. */
+function PostMedia({ media, alt }: { media: SessionMedia; alt: string }) {
+  if (media.mime_type) return <PostFile media={media} />;
+  return <PostImage src={media.image_url} alt={alt} />;
 }
 
 /* -------------------------------------------------------------- post */
@@ -121,7 +161,11 @@ function PostCard({ post, viewer }: { post: FeedPost; viewer: User }) {
             {post.author.name}
           </p>
           <p className="truncate text-xs text-muted">
-            {post.session ? `שבוע ${post.session.week_index} · ${post.session.title}` : 'אימון'}
+            {post.session
+              ? `שבוע ${post.session.week_index} · ${post.session.title}`
+              : isStaffPost
+                ? 'הודעה כללית'
+                : 'אימון'}
           </p>
         </div>
         {isStaffPost ? (
@@ -134,7 +178,7 @@ function PostCard({ post, viewer }: { post: FeedPost; viewer: User }) {
         ) : null}
       </div>
 
-      <PostImage src={post.media.image_url} alt={post.media.caption ?? `תמונת אימון של ${post.author.name}`} />
+      <PostMedia media={post.media} alt={post.media.caption ?? `תמונת אימון של ${post.author.name}`} />
 
       {/* actions */}
       <div className="flex items-center gap-1 px-2 pt-2">
@@ -255,40 +299,57 @@ function PostCard({ post, viewer }: { post: FeedPost; viewer: User }) {
 function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSession[] }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+  const isTrainer = viewer.role === 'trainer';
   const [open, setOpen] = useState(false);
-  const [photo, setPhoto] = useState<string | null>(null);
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [isImage, setIsImage] = useState(true);
   const [caption, setCaption] = useState('');
   const [sessionId, setSessionId] = useState(sessions[sessions.length - 1]?.id ?? '');
+  const [noSession, setNoSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const reset = () => {
-    setPhoto(null);
+    setDataUrl(null);
+    setFileName(null);
+    setIsImage(true);
     setCaption('');
+    setNoSession(false);
     setOpen(false);
     if (fileRef.current) fileRef.current.value = '';
   };
 
   const pick = (file: File | undefined) => {
     if (!file) return;
-    if (!file.type.startsWith('image/')) return setError('בחרו קובץ תמונה.');
-    if (file.size > 5 * 1024 * 1024) return setError('התמונה צריכה להיות עד 5 מגה-בייט.');
+    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+      return setError('סוג קובץ לא נתמך — תמונה, PDF או מסמך.');
+    }
+    if (file.size > MAX_UPLOAD_BYTES) return setError('הקובץ צריך להיות עד 10 מגה-בייט.');
     const reader = new FileReader();
     reader.onload = () => {
       setError(null);
-      setPhoto(String(reader.result));
+      setDataUrl(String(reader.result));
+      setFileName(file.name);
+      setIsImage(file.type.startsWith('image/'));
     };
     reader.readAsDataURL(file);
   };
 
   const publish = () => {
-    if (!photo || !sessionId) return;
+    if (!dataUrl) return;
+    if (!noSession && !sessionId) return;
+    if (noSession && !caption.trim()) {
+      setError('הודעה כללית חייבת לכלול טקסט.');
+      return;
+    }
     startTransition(async () => {
       const result = await uploadSessionMedia({
-        session_id: sessionId,
+        session_id: noSession ? null : sessionId,
         user_id: viewer.id,
-        image_url: photo,
+        image_url: dataUrl,
         caption: caption.trim() || undefined,
+        file_name: fileName,
       });
       if (!result.ok) {
         setError(result.error);
@@ -304,7 +365,7 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
+        accept={ALLOWED_FILE_TYPES.join(',')}
         capture="environment"
         className="sr-only"
         id="feed-photo"
@@ -314,13 +375,15 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
         }}
       />
 
-      {!open || !photo ? (
+      {!open || !dataUrl ? (
         <label
           htmlFor="feed-photo"
           className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-elevated"
         >
           <Avatar name={viewer.name} groupId={viewer.team} />
-          <span className="flex-1 text-sm text-muted">שיתוף תמונה מהאימון…</span>
+          <span className="flex-1 text-sm text-muted">
+            {isTrainer ? 'שיתוף תמונה, קובץ או הודעה…' : 'שיתוף תמונה מהאימון…'}
+          </span>
           <span className="btn-primary px-3 py-2">
             <Camera aria-hidden className="h-4 w-4" />
             פרסום
@@ -329,12 +392,21 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
       ) : (
         <div className="space-y-3 p-4">
           <div className="relative overflow-hidden rounded-xl border border-line">
-            {/* eslint-disable-next-line @next/next/no-img-element -- local data URL preview */}
-            <img src={photo} alt="תצוגה מקדימה של התמונה שנבחרה" className="max-h-72 w-full object-cover" />
+            {isImage ? (
+              // eslint-disable-next-line @next/next/no-img-element -- local data URL preview
+              <img src={dataUrl} alt="תצוגה מקדימה של התמונה שנבחרה" className="max-h-72 w-full object-cover" />
+            ) : (
+              <div className="flex items-center gap-3 bg-elevated px-4 py-4">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface text-accent">
+                  <Paperclip aria-hidden className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{fileName}</span>
+              </div>
+            )}
             <button
               type="button"
               onClick={reset}
-              aria-label="ביטול התמונה"
+              aria-label="ביטול הקובץ"
               className="absolute end-2 top-2 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80"
             >
               <X aria-hidden className="h-4 w-4" />
@@ -343,36 +415,49 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
 
           <div className="space-y-1.5">
             <label htmlFor="feed-caption" className="text-sm font-medium text-ink">
-              כיתוב
+              כיתוב {noSession ? <span className="font-normal text-muted">(חובה להודעה כללית)</span> : null}
             </label>
             <input
               id="feed-caption"
               className="input"
-              placeholder="איך היה האימון?"
+              placeholder={noSession ? 'מה ברצונכם למסור?' : 'איך היה האימון?'}
               value={caption}
               onChange={(event) => setCaption(event.target.value)}
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="feed-session" className="text-sm font-medium text-ink">
-              מאיזה אימון זה?
+          {isTrainer ? (
+            <label className="flex items-center gap-1.5 text-sm text-ink">
+              <input
+                type="checkbox"
+                checked={noSession}
+                onChange={(event) => setNoSession(event.target.checked)}
+              />
+              לא קשור לאימון ספציפי — הודעה כללית
             </label>
-            <select
-              id="feed-session"
-              className="input"
-              value={sessionId}
-              onChange={(event) => setSessionId(event.target.value)}
-            >
-              {[...sessions]
-                .sort((a, b) => b.date.localeCompare(a.date))
-                .map((session) => (
-                  <option key={session.id} value={session.id}>
-                    שבוע {session.week_index} · {session.title}
-                  </option>
-                ))}
-            </select>
-          </div>
+          ) : null}
+
+          {!noSession ? (
+            <div className="space-y-1.5">
+              <label htmlFor="feed-session" className="text-sm font-medium text-ink">
+                מאיזה אימון זה?
+              </label>
+              <select
+                id="feed-session"
+                className="input"
+                value={sessionId}
+                onChange={(event) => setSessionId(event.target.value)}
+              >
+                {[...sessions]
+                  .sort((a, b) => b.date.localeCompare(a.date))
+                  .map((session) => (
+                    <option key={session.id} value={session.id}>
+                      שבוע {session.week_index} · {session.title}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          ) : null}
 
           {error ? (
             <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">

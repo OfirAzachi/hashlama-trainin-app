@@ -441,27 +441,33 @@ export type Database = {
       session_media: {
         Row: {
           caption: string | null
+          file_name: string | null
           id: string
           image_url: string
-          session_id: string
+          mime_type: string | null
+          session_id: string | null
           tags: string[]
           uploaded_at: string
           user_id: string
         }
         Insert: {
           caption?: string | null
+          file_name?: string | null
           id?: string
           image_url: string
-          session_id: string
+          mime_type?: string | null
+          session_id?: string | null
           tags?: string[]
           uploaded_at?: string
           user_id: string
         }
         Update: {
           caption?: string | null
+          file_name?: string | null
           id?: string
           image_url?: string
-          session_id?: string
+          mime_type?: string | null
+          session_id?: string | null
           tags?: string[]
           uploaded_at?: string
           user_id?: string

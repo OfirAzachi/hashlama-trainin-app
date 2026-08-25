@@ -1,6 +1,6 @@
 'use client';
 
-import { ImageOff, Images, Search, X } from 'lucide-react';
+import { FileText, ImageOff, Images, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Avatar, Badge, Card, CardHeader, EmptyState, GroupBadge } from '@/components/ui/primitives';
@@ -51,6 +51,24 @@ function MediaImage({ src, alt, className }: { src: string; alt: string; classNa
   );
 }
 
+/** A non-image upload (PDF, doc…) renders as a labelled file card, not a broken <img>. */
+function FileThumb({ fileName, className }: { fileName: string | null; className?: string }) {
+  return (
+    <div
+      className={cn('flex flex-col items-center justify-center gap-1 bg-elevated text-muted', className)}
+    >
+      <FileText aria-hidden className="h-6 w-6" />
+      <span className="line-clamp-1 px-2 text-center text-[10px]">{fileName ?? 'קובץ מצורף'}</span>
+    </div>
+  );
+}
+
+/** Picks the right thumbnail for whatever this upload actually is. */
+function MediaThumb({ item, alt, className }: { item: SessionMedia; alt: string; className?: string }) {
+  if (item.mime_type) return <FileThumb fileName={item.file_name} className={className} />;
+  return <MediaImage src={item.image_url} alt={alt} className={className} />;
+}
+
 /**
  * Filterable grid of workout photos, grouped by session date and annotated
  * with the participant, their group and the tagged exercise.
@@ -88,7 +106,7 @@ export default function MediaGallery({
         participant?.name ?? '',
         item.caption ?? '',
         item.tags.join(' '),
-        sessionById.get(item.session_id)?.title ?? '',
+        (item.session_id ? sessionById.get(item.session_id)?.title : null) ?? '',
       ]
         .join(' ')
         .toLowerCase();
@@ -100,9 +118,10 @@ export default function MediaGallery({
   const bySession = useMemo(() => {
     const buckets = new Map<string, SessionMedia[]>();
     filtered.forEach((item) => {
-      const bucket = buckets.get(item.session_id) ?? [];
+      const key = item.session_id ?? 'general';
+      const bucket = buckets.get(key) ?? [];
       bucket.push(item);
-      buckets.set(item.session_id, bucket);
+      buckets.set(key, bucket);
     });
     return [...buckets.entries()].sort(([a], [b]) => {
       const dateA = sessionById.get(a)?.date ?? '';
@@ -190,7 +209,11 @@ export default function MediaGallery({
               <section key={sessionId}>
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   <h3 className="text-sm font-semibold text-ink">
-                    {session ? `שבוע ${session.week_index} · ${session.title}` : 'אימון לא ידוע'}
+                    {session
+                      ? `שבוע ${session.week_index} · ${session.title}`
+                      : sessionId === 'general'
+                        ? 'פרסומים כלליים'
+                        : 'אימון לא ידוע'}
                   </h3>
                   {session ? (
                     <span className="text-xs text-muted tnum">{formatDate(session.date)}</span>
@@ -208,8 +231,8 @@ export default function MediaGallery({
                           onClick={() => setActive(item)}
                           className="group w-full overflow-hidden rounded-xl border border-line bg-surface text-start transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-accent"
                         >
-                          <MediaImage
-                            src={item.image_url}
+                          <MediaThumb
+                            item={item}
                             alt={item.caption ?? `תמונת אימון של ${participant?.name ?? 'מתאמן'}`}
                             className="h-32 w-full transition-transform duration-300 group-hover:scale-[1.03] sm:h-36"
                           />
@@ -283,11 +306,15 @@ aria-label="סגירת התמונה"
               </button>
             </div>
 
-            <MediaImage
-              src={active.image_url}
-              alt={active.caption ?? 'תמונת אימון'}
-              className="max-h-[60vh] w-full"
-            />
+            <MediaThumb item={active} alt={active.caption ?? 'תמונת אימון'} className="max-h-[60vh] w-full" />
+            {active.mime_type ? (
+              <div className="px-4 pt-3">
+                <a href={active.image_url} target="_blank" rel="noreferrer" className="btn-secondary w-full justify-center">
+                  <FileText aria-hidden className="h-4 w-4" />
+                  פתיחת {active.file_name ?? 'הקובץ'}
+                </a>
+              </div>
+            ) : null}
 
             <div className="space-y-2 px-4 py-3">
               {active.caption ? <p className="text-sm text-ink">{active.caption}</p> : null}
@@ -295,7 +322,7 @@ aria-label="סגירת התמונה"
                 {participantById.get(active.user_id) ? (
                   <GroupBadge groupId={participantById.get(active.user_id)!.team} short />
                 ) : null}
-                {sessionById.get(active.session_id) ? (
+                {active.session_id && sessionById.get(active.session_id) ? (
                   <Badge tone="accent">{sessionById.get(active.session_id)!.title}</Badge>
                 ) : null}
                 {active.tags.map((tag) => (

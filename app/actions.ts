@@ -32,8 +32,18 @@ import type {
   TrainingSession,
 } from '@/lib/types';
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB, matches the Storage bucket policy
+const MAX_MEDIA_BYTES = 10 * 1024 * 1024; // 10 MB, matches the Storage bucket policy
 const MEDIA_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_MEDIA_BUCKET || 'session-media';
+const ALLOWED_MEDIA_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/plain',
+]);
 
 function validateEntry(entry: LogEntryInput, index: number): string | null {
   const where = `Entry ${index + 1}`;
@@ -67,31 +77,49 @@ export async function submitSessionLog(
   return { ok: true, data: created };
 }
 
+const MIME_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+  'application/pdf': 'pdf',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'text/plain': 'txt',
+};
+
 /**
- * Stores a workout photo. The client always sends a data URL (or, once
- * already stored, an https URL on re-save); when Supabase is configured this
- * uploads the decoded bytes to the `session-media` bucket and swaps in the
- * public URL before the row is written. Falls back to storing the data URL
- * directly in mock mode (no Supabase configured).
+ * Stores a feed upload — a workout photo tied to a session, or (trainer
+ * only) a general post with no session and possibly a non-image file. The
+ * client always sends a data URL (or, once already stored, an https URL on
+ * re-save); when Supabase is configured this uploads the decoded bytes to
+ * the `session-media` bucket and swaps in the public URL before the row is
+ * written. Falls back to storing the data URL directly in mock mode (no
+ * Supabase configured).
  */
 export async function uploadSessionMedia(
   input: MediaUploadInput,
 ): Promise<ActionResult<SessionMedia>> {
-  if (!input.image_url) return { ok: false, error: 'לא נבחרה תמונה.' };
+  if (!input.image_url) return { ok: false, error: 'לא נבחר קובץ.' };
 
-  const dataUrlMatch = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(input.image_url);
+  const dataUrlMatch = /^data:([a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(input.image_url);
   const isHttpUrl = /^https?:\/\//.test(input.image_url);
   if (!dataUrlMatch && !isHttpUrl) {
-    return { ok: false, error: 'סוג התמונה לא נתמך.' };
+    return { ok: false, error: 'סוג הקובץ לא נתמך.' };
+  }
+  if (dataUrlMatch && !ALLOWED_MEDIA_MIME_TYPES.has(dataUrlMatch[1])) {
+    return { ok: false, error: 'סוג הקובץ לא נתמך.' };
   }
 
   let imageUrl = input.image_url;
+  let mimeType: string | null = null;
 
   if (dataUrlMatch) {
-    const [, mimeType, base64] = dataUrlMatch;
+    const [, matchedMimeType, base64] = dataUrlMatch;
+    mimeType = matchedMimeType;
     const bytes = Buffer.from(base64, 'base64');
-    if (bytes.byteLength > MAX_IMAGE_BYTES) {
-      return { ok: false, error: 'התמונה גדולה מ-5 מגה-בייט.' };
+    if (bytes.byteLength > MAX_MEDIA_BYTES) {
+      return { ok: false, error: 'הקובץ גדול מ-10 מגה-בייט.' };
     }
 
     if (supabaseConfigured) {
@@ -100,24 +128,38 @@ export async function uploadSessionMedia(
         data: { user: authUser },
       } = await supabase.auth.getUser();
       if (!authUser || authUser.id !== input.user_id) {
-        return { ok: false, error: 'אין הרשאה להעלות תמונה בשם משתמש אחר.' };
+        return { ok: false, error: 'אין הרשאה להעלות קובץ בשם משתמש אחר.' };
       }
 
-      const extension = mimeType.split('/')[1]?.replace('jpeg', 'jpg') ?? 'jpg';
-      const path = `${input.user_id}/${input.session_id}/${Date.now()}-${Math.random()
+      if (!input.session_id) {
+        const { data: profile } = await supabase.from('users').select('role').eq('id', authUser.id).maybeSingle();
+        if (profile?.role !== 'trainer') {
+          return { ok: false, error: 'רק מאמן/ת יכולים לפרסם ללא אימון משויך.' };
+        }
+      }
+
+      const extension = MIME_EXTENSIONS[mimeType] ?? 'bin';
+      const path = `${input.user_id}/${input.session_id ?? 'general'}/${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 8)}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
         .from(MEDIA_BUCKET)
         .upload(path, bytes, { contentType: mimeType, upsert: false });
-      if (uploadError) return { ok: false, error: 'העלאת התמונה נכשלה, נסו שוב.' };
+      if (uploadError) return { ok: false, error: 'העלאת הקובץ נכשלה, נסו שוב.' };
 
       imageUrl = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path).data.publicUrl;
     }
   }
 
-  const created = await insertMedia({ ...input, image_url: imageUrl });
+  // Only non-image uploads carry a mime_type — that's what the feed uses to
+  // tell a photo (renders inline) from a file (renders as a download card).
+  const isImage = mimeType?.startsWith('image/') ?? true;
+  const created = await insertMedia({
+    ...input,
+    image_url: imageUrl,
+    mime_type: isImage ? null : mimeType,
+  });
   revalidatePath('/participant');
   revalidatePath('/trainer');
   revalidatePath('/feed');
