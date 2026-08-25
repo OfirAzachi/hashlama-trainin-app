@@ -29,7 +29,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
-import { createTrainingSession, updateTrainingSession } from '@/app/actions';
+import { createTrainingSession, deleteTrainingSession, updateTrainingSession } from '@/app/actions';
 import { Badge, Card } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 import { ExerciseDemoButton, LevelBadge } from '@/components/ExerciseDemo';
@@ -693,6 +693,17 @@ export default function WeeklyTrainingBuilder({
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const result = await deleteTrainingSession(sessionId);
+      if (!result.ok) throw new Error(result.error);
+    },
+    onSuccess: () => {
+      setLoadedFromSessionId('');
+      router.refresh();
+    },
+  });
+
   /* -------------------------------------------------------------- UI */
 
   return (
@@ -803,13 +814,43 @@ export default function WeeklyTrainingBuilder({
                 כשעדיין אין לו תוצאות רשומות.
               </p>
               {loadedFromSessionId ? (
-                <button
-                  type="button"
-                  className="btn-secondary w-full py-1.5 text-sm"
-                  onClick={() => startEditingSession(loadedFromSessionId)}
-                >
-                  עריכת האימון הזה במקום
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="btn-secondary flex-1 py-1.5 text-sm"
+                    onClick={() => startEditingSession(loadedFromSessionId)}
+                  >
+                    עריכת האימון הזה במקום
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary py-1.5 text-sm text-rose-500 hover:text-rose-600"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => {
+                      const session = pastSessions.find((entry) => entry.id === loadedFromSessionId);
+                      if (
+                        !window.confirm(
+                          `למחוק את "${session?.title ?? 'האימון'}"? הפעולה לא ניתנת לביטול, ותיחסם אם כבר יש לו תוצאות רשומות.`,
+                        )
+                      ) {
+                        return;
+                      }
+                      deleteMutation.mutate(loadedFromSessionId);
+                    }}
+                  >
+                    {deleteMutation.isPending ? (
+                      <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 aria-hidden className="h-4 w-4" />
+                    )}
+                    מחיקה
+                  </button>
+                </div>
+              ) : null}
+              {deleteMutation.isError ? (
+                <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+                  {deleteMutation.error instanceof Error ? deleteMutation.error.message : 'המחיקה נכשלה, נסו שוב.'}
+                </p>
               ) : null}
             </div>
           ) : null}

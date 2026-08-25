@@ -33,7 +33,7 @@ export default async function ParticipantPage() {
             ? ` · ${due} אימונים ממתינים לתוצאות שלך`
             : ''
       }`}
-      user={{ name: participant.name, role: participant.role }}
+      user={{ name: participant.name, role: participant.role, hasTeam: true }}
       contextSlot={<NotificationBell userId={participant.id} />}
     >
       <ParticipantView snapshot={snapshot} />

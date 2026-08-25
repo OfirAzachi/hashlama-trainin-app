@@ -7,6 +7,7 @@ import { Avatar, Badge, Card, CardHeader, EmptyState, GroupBadge } from '@/compo
 import { cn } from '@/lib/cn';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { GROUP_LIST } from '@/lib/groups';
+import { renderFormattedText } from '@/lib/richtext';
 import type { GroupId, Participant, SessionMedia, TrainingSession } from '@/lib/types';
 
 interface MediaGalleryProps {
@@ -317,7 +318,7 @@ export default function MediaGallery({
             ) : null}
 
             <div className="space-y-2 px-4 py-3">
-              {active.caption ? <p className="text-sm text-ink">{active.caption}</p> : null}
+              {active.caption ? <div className="text-sm text-ink">{renderFormattedText(active.caption)}</div> : null}
               <div className="flex flex-wrap items-center gap-2">
                 {participantById.get(active.user_id) ? (
                   <GroupBadge groupId={participantById.get(active.user_id)!.team} short />

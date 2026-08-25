@@ -31,7 +31,7 @@ export default async function InboxPage() {
     <AppShell
       title="תיבת הודעות"
       subtitle="כל מקום שבו מישהו תייג אתכם בתגובה בפיד."
-      user={{ name: viewer.name, role: viewer.role }}
+      user={{ name: viewer.name, role: viewer.role, hasTeam: Boolean(viewer.team) }}
       contextSlot={<NotificationBell userId={viewer.id} />}
     >
       <div className="mx-auto max-w-xl">

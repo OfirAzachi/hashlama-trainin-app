@@ -47,12 +47,15 @@ export default function AppShell({
 }: {
   title: string;
   subtitle?: string;
-  user: { name: string; role: Role };
+  /** `hasTeam`: a trainer who has also joined a group gets the participant tab too. */
+  user: { name: string; role: Role; hasTeam?: boolean };
   contextSlot?: ReactNode;
   children: ReactNode;
 }) {
   const pathname = usePathname();
-  const nav = NAV.filter((entry) => entry.roles.includes(user.role));
+  const nav = NAV.filter((entry) =>
+    entry.href === '/participant' ? user.role === 'participant' || user.hasTeam : entry.roles.includes(user.role),
+  );
 
   return (
     <div className="min-h-screen bg-bg">

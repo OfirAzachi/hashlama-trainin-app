@@ -220,9 +220,22 @@ export async function getUsersByIds(ids: string[]): Promise<User[]> {
   return data.map(mapUser);
 }
 
+/** Lets a trainer join (or leave) a group as a participant of their own. */
+export async function updateUserTeam(userId: string, team: GroupId | null): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.from('users').update({ team }).eq('id', userId);
+  if (error) throw error;
+}
+
+/**
+ * Everyone who trains as part of a group — regular participants, plus any
+ * trainer who has opted into a group themselves. Membership is defined by
+ * having a team, not by role, so a trainer training alongside their cohort
+ * counts toward that group's roster and standings like anyone else.
+ */
 export async function getParticipants(group?: GroupId | 'all'): Promise<Participant[]> {
   const supabase = await createClient();
-  let query = supabase.from('users').select('*').eq('role', 'participant');
+  let query = supabase.from('users').select('*').not('team', 'is', null);
   if (group && group !== 'all') query = query.eq('team', group);
   const { data, error } = await query.order('name');
   if (error) throw error;
@@ -235,7 +248,7 @@ export async function getParticipantById(userId: string): Promise<Participant | 
     .from('users')
     .select('*')
     .eq('id', userId)
-    .eq('role', 'participant')
+    .not('team', 'is', null)
     .maybeSingle();
   return data ? (mapUser(data) as Participant) : null;
 }
@@ -582,6 +595,17 @@ export async function insertSession(input: SessionPlanInput): Promise<TrainingSe
   const match = created.find((session) => session.id === sessionId);
   if (!match) throw new Error('Session was created but could not be re-fetched.');
   return match;
+}
+
+/**
+ * Removes a training entirely — only ever called once the caller has
+ * confirmed nobody has logged against it, same rule as editing. Everything
+ * hanging off it (tracks, exercises, segments, session_media, …) cascades.
+ */
+export async function deleteSession(sessionId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.from('training_sessions').delete().eq('id', sessionId);
+  if (error) throw error;
 }
 
 /** Whether anyone has logged anything against this session — editing is only safe before that. */

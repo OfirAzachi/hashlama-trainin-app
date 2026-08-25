@@ -1,11 +1,14 @@
 'use client';
 
 import {
+  Bold,
   Camera,
   FileText,
   Heart,
   ImageOff,
   ImagePlus,
+  List,
+  ListOrdered,
   Loader2,
   MessageCircle,
   Paperclip,
@@ -15,7 +18,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { useEffect, useLayoutEffect, useOptimistic, useRef, useState, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
@@ -31,6 +34,7 @@ import { Avatar, Badge, Card, EmptyState, GroupBadge } from '@/components/ui/pri
 import { cn } from '@/lib/cn';
 import { compactCount, formatRelativeTime } from '@/lib/format';
 import { GROUP_LIST } from '@/lib/groups';
+import { renderFormattedText } from '@/lib/richtext';
 import type { FeedPost, GroupId, SessionMedia, TrainingSession, User } from '@/lib/types';
 
 const ALLOWED_FILE_TYPES = [
@@ -88,6 +92,108 @@ function encodeMentions(raw: string, mentions: Array<{ id: string; name: string 
   }
   return result;
 }
+
+/* --------------------------------------------------------- rich text */
+
+// A light markdown subset instead of a raw HTML editor: **bold**, "- " for a
+// bullet list, "N. " for a numbered list. Simple enough to type by hand too,
+// but the toolbar below means nobody has to know the syntax exists.
+
+/** Wraps the current selection in `**…**` (or inserts a placeholder if nothing's selected). */
+function applyBold(el: HTMLTextAreaElement, value: string, onChange: (next: string) => void) {
+  const start = el.selectionStart;
+  const end = el.selectionEnd;
+  const selected = value.slice(start, end);
+  const text = selected || 'טקסט מודגש';
+  const next = value.slice(0, start) + `**${text}**` + value.slice(end);
+  onChange(next);
+  requestAnimationFrame(() => {
+    el.focus();
+    if (selected) el.setSelectionRange(start + 2, end + 2);
+    else el.setSelectionRange(start + 2, start + 2 + text.length);
+  });
+}
+
+/** Toggles a "- " or "N. " prefix on every line the selection touches. */
+function applyListPrefix(
+  el: HTMLTextAreaElement,
+  value: string,
+  onChange: (next: string) => void,
+  ordered: boolean,
+) {
+  const start = el.selectionStart;
+  const end = el.selectionEnd;
+  const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+  const lineEndIndex = value.indexOf('\n', end);
+  const lineEnd = lineEndIndex === -1 ? value.length : lineEndIndex;
+
+  const block = value.slice(lineStart, lineEnd);
+  const lines = block.split('\n');
+  const prefixPattern = ordered ? /^\d+\.\s/ : /^-\s/;
+  const alreadyListed = lines.every((line) => prefixPattern.test(line) || line.trim() === '');
+
+  let counter = 1;
+  const nextLines = lines.map((line) => {
+    if (line.trim() === '') return line;
+    const stripped = line.replace(/^(-|\d+\.)\s/, '');
+    return alreadyListed ? stripped : ordered ? `${counter++}. ${stripped}` : `- ${stripped}`;
+  });
+  const nextBlock = nextLines.join('\n');
+  const next = value.slice(0, lineStart) + nextBlock + value.slice(lineEnd);
+  onChange(next);
+  requestAnimationFrame(() => {
+    el.focus();
+    el.setSelectionRange(start, end + (nextBlock.length - block.length));
+  });
+}
+
+/** The three-button toolbar shared by the composer and the caption editor. */
+function FormattingToolbar({
+  textareaRef,
+  value,
+  onChange,
+}: {
+  textareaRef: RefObject<HTMLTextAreaElement>;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const run = (fn: (el: HTMLTextAreaElement) => void) => {
+    const el = textareaRef.current;
+    if (el) fn(el);
+  };
+  return (
+    <div className="flex items-center gap-1 rounded-t-xl border border-b-0 border-line bg-elevated/50 px-2 py-1.5">
+      <button
+        type="button"
+        onClick={() => run((el) => applyBold(el, value, onChange))}
+        className="btn-ghost h-8 w-8 p-0"
+        aria-label="הדגשה"
+        title="הדגשה"
+      >
+        <Bold aria-hidden className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => run((el) => applyListPrefix(el, value, onChange, false))}
+        className="btn-ghost h-8 w-8 p-0"
+        aria-label="רשימת תבליטים"
+        title="רשימת תבליטים"
+      >
+        <List aria-hidden className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => run((el) => applyListPrefix(el, value, onChange, true))}
+        className="btn-ghost h-8 w-8 p-0"
+        aria-label="רשימה ממוספרת"
+        title="רשימה ממוספרת"
+      >
+        <ListOrdered aria-hidden className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
 
 /* ------------------------------------------------------------- image */
 
@@ -162,6 +268,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
   const [caption, setCaption] = useState(post.media.caption ?? '');
   const [isEditing, setIsEditing] = useState(false);
   const [editDraft, setEditDraft] = useState(caption);
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [isDeleted, setIsDeleted] = useState(false);
   const [isSaving, startSaveTransition] = useTransition();
@@ -306,8 +413,10 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
 
   const captionArea = isEditing ? (
     <div className="space-y-1.5">
+      <FormattingToolbar textareaRef={editTextareaRef} value={editDraft} onChange={setEditDraft} />
       <textarea
-        className="input min-h-[5rem] resize-y py-2 leading-relaxed"
+        ref={editTextareaRef}
+        className="input min-h-[5rem] resize-y rounded-t-none py-2 leading-relaxed"
         value={editDraft}
         onChange={(event) => setEditDraft(event.target.value)}
         placeholder="כיתוב"
@@ -333,9 +442,9 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
     </div>
   ) : caption ? (
     // The author's name already shows in the header right above, so it's not repeated here.
-    <p className={cn('whitespace-pre-wrap text-sm text-ink', !hasMedia && 'text-[15px] leading-relaxed')}>
-      {caption}
-    </p>
+    <div className={cn('text-sm text-ink', !hasMedia && 'text-[15px] leading-relaxed')}>
+      {renderFormattedText(caption)}
+    </div>
   ) : null;
 
   return (
@@ -553,6 +662,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
 function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSession[] }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+  const captionRef = useRef<HTMLTextAreaElement>(null);
   const isTrainer = viewer.role === 'trainer';
   const [open, setOpen] = useState(false);
   const [dataUrl, setDataUrl] = useState<string | null>(null);
@@ -683,9 +793,11 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
               {dataUrl ? 'כיתוב' : 'מה ברצונכם לכתוב?'}{' '}
               {noSession ? <span className="font-normal text-muted">(חובה להודעה כללית)</span> : null}
             </label>
+            <FormattingToolbar textareaRef={captionRef} value={caption} onChange={setCaption} />
             <textarea
+              ref={captionRef}
               id="feed-caption"
-              className="input min-h-[6rem] resize-y py-2 leading-relaxed"
+              className="input min-h-[6rem] resize-y rounded-t-none py-2 leading-relaxed"
               placeholder={
                 noSession ? 'מה ברצונכם למסור?' : dataUrl ? 'איך היה האימון?' : 'כתבו כאן טקסט, כולל שורות וסעיפים…'
               }

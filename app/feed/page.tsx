@@ -24,7 +24,7 @@ export default async function FeedPage() {
     <AppShell
       title="פיד האימונים"
       subtitle="תמונות מכל האימונים. אפשר לסמן לייק, להגיב ולעודד אחד את השני."
-      user={{ name: viewer.name, role: viewer.role }}
+      user={{ name: viewer.name, role: viewer.role, hasTeam: Boolean(viewer.team) }}
       contextSlot={<NotificationBell userId={viewer.id} />}
     >
       <SocialFeed posts={posts} viewer={viewer} sessions={sessions} users={users} />

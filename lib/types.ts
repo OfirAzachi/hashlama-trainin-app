@@ -53,8 +53,13 @@ export interface User {
   joined_at: string; // ISO date
 }
 
+/**
+ * Anyone who trains as part of a group. Usually a regular participant, but a
+ * trainer who has joined a group themselves is a Participant too — role
+ * stays 'trainer' (that's still what grants admin access), team is what
+ * makes them count toward that group's roster and standings.
+ */
 export interface Participant extends User {
-  role: 'participant';
   team: GroupId;
 }
 

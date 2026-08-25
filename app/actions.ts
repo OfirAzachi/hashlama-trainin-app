@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import {
   deleteMedia,
+  deleteSession,
   getMediaOwner,
   getUsersByIds,
   insertComment,
@@ -17,6 +18,7 @@ import {
   toggleLike,
   updateMediaCaption,
   updateSession,
+  updateUserTeam,
 } from '@/lib/data';
 import { findExercise, hasFixedExercises } from '@/lib/catalog';
 import { supabaseConfigured } from '@/lib/supabase/env';
@@ -24,6 +26,7 @@ import { createClient } from '@/lib/supabase/server';
 import { METRIC_TYPES } from '@/lib/types';
 import type {
   ActionResult,
+  GroupId,
   LogEntryInput,
   MediaComment,
   MediaUploadInput,
@@ -289,6 +292,54 @@ export async function updateTrainingSession(
   revalidatePath('/trainer');
   revalidatePath('/participant');
   return { ok: true, data: updated };
+}
+
+/**
+ * Deletes a published training outright — same safety rule as editing:
+ * refused once anyone has logged results against it, so a trainer can't
+ * accidentally erase real data. RLS restricts this to trainers already.
+ */
+export async function deleteTrainingSession(sessionId: string): Promise<ActionResult<null>> {
+  if (!sessionId) return { ok: false, error: 'חסר מזהה אימון.' };
+
+  if (await sessionHasLogs(sessionId)) {
+    return { ok: false, error: 'לא ניתן למחוק אימון שכבר יש לו תוצאות רשומות ממתאמנים.' };
+  }
+
+  await deleteSession(sessionId);
+  revalidatePath('/trainer');
+  revalidatePath('/participant');
+  return { ok: true, data: null };
+}
+
+/**
+ * Lets a trainer join a group as a participant of their own — they keep
+ * their trainer role (and admin access) but now also show up in that
+ * group's roster and standings, and can log trainings like anyone else.
+ * Pass `team: null` to leave the group again.
+ */
+export async function joinGroupAsTrainer(userId: string, team: GroupId | null): Promise<ActionResult<null>> {
+  if (!userId) return { ok: false, error: 'חסר מזהה משתמש.' };
+
+  if (supabaseConfigured) {
+    const supabase = await createClient();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    if (!authUser || authUser.id !== userId) {
+      return { ok: false, error: 'אין הרשאה לשנות שיוך קבוצה עבור משתמש אחר.' };
+    }
+    const { data: profile } = await supabase.from('users').select('role').eq('id', authUser.id).maybeSingle();
+    if (profile?.role !== 'trainer') {
+      return { ok: false, error: 'רק מאמן/ת יכולים להצטרף לקבוצה בדרך הזו.' };
+    }
+  }
+
+  await updateUserTeam(userId, team);
+  revalidatePath('/trainer');
+  revalidatePath('/participant');
+  revalidatePath('/feed');
+  return { ok: true, data: null };
 }
 
 /* --------------------------------------------------------- social feed */

@@ -7,14 +7,17 @@ import {
   Flame,
   Images,
   LifeBuoy,
+  Loader2,
   Table2,
   Timer,
   TrendingUp,
   Trophy,
   Users,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useMemo, useState, useTransition } from 'react';
 
+import { joinGroupAsTrainer } from '@/app/actions';
 import {
   BenchmarkScatterChart,
   GroupComparisonChart,
@@ -51,7 +54,44 @@ import {
   sessionTrendData,
   topImprovers,
 } from '@/lib/metrics';
-import type { CohortSnapshot, GroupId } from '@/lib/types';
+import type { CohortSnapshot, GroupId, User } from '@/lib/types';
+
+/** Lets a trainer opt into (or out of) training as a member of a group too. */
+function TrainerGroupMembership({ trainer }: { trainer: User }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [team, setTeam] = useState<GroupId | ''>(trainer.team ?? '');
+
+  const save = (next: GroupId | '') => {
+    setTeam(next);
+    startTransition(async () => {
+      await joinGroupAsTrainer(trainer.id, next || null);
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-elevated/50 px-3 py-2 text-sm">
+      <Users aria-hidden className="h-4 w-4 shrink-0 text-muted" />
+      <span className="text-muted">להתאמן גם בתור מתאמן/ת בקבוצה:</span>
+      <select
+        className="input w-auto py-1 text-sm"
+        value={team}
+        disabled={isPending}
+        onChange={(event) => save(event.target.value as GroupId | '')}
+        aria-label="הצטרפות לקבוצה כמתאמן/ת"
+      >
+        <option value="">לא משויך/ת</option>
+        {GROUP_LIST.map((group) => (
+          <option key={group.id} value={group.id}>
+            {group.name}
+          </option>
+        ))}
+      </select>
+      {isPending ? <Loader2 aria-hidden className="h-4 w-4 animate-spin text-muted" /> : null}
+    </div>
+  );
+}
 
 type Tab = 'analytics' | 'planner' | 'media' | 'logs';
 
@@ -66,7 +106,7 @@ const TABS: Array<{ value: Tab; label: string; icon: typeof BarChart3 }> = [
  * Trainer cockpit: cohort and per-group analytics, comparative charts,
  * automated triage lists, the session planner, media feed and log inspector.
  */
-export default function TrainerDashboard({ snapshot }: { snapshot: CohortSnapshot }) {
+export default function TrainerDashboard({ snapshot, trainer }: { snapshot: CohortSnapshot; trainer: User }) {
   const { participants, sessions, logs, strengthLogs, media, summaries, groups, totals } = snapshot;
 
   const [tab, setTab] = useState<Tab>('analytics');
@@ -95,6 +135,8 @@ export default function TrainerDashboard({ snapshot }: { snapshot: CohortSnapsho
 
   return (
     <div className="space-y-6">
+      <TrainerGroupMembership trainer={trainer} />
+
       {/* ------------------------------------------------------ cohort KPIs */}
       <section aria-label="סיכום המחזור" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard

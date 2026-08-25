@@ -21,10 +21,10 @@ export default async function TrainerPage() {
     <AppShell
       title="דשבורד המחזור"
       subtitle={`מחוברת כ${trainer.name} · ${snapshot.participants.length} מתאמנים ב-${snapshot.groups.length} קבוצות`}
-      user={{ name: trainer.name, role: trainer.role }}
+      user={{ name: trainer.name, role: trainer.role, hasTeam: Boolean(trainer.team) }}
       contextSlot={<NotificationBell userId={trainer.id} />}
     >
-      <TrainerDashboard snapshot={snapshot} />
+      <TrainerDashboard snapshot={snapshot} trainer={trainer} />
     </AppShell>
   );
 }

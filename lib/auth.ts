@@ -63,8 +63,13 @@ export async function requireTrainer(): Promise<User> {
   return user;
 }
 
+/**
+ * Anyone with a team can use the participant view — a plain participant
+ * always, or a trainer who has also joined a group themselves. A trainer
+ * with no team has nothing to show here and is sent back to their dashboard.
+ */
 export async function requireParticipant(): Promise<Participant> {
   const user = await requireUser();
-  if (user.role !== 'participant' || !user.team) redirect('/trainer');
+  if (!user.team) redirect('/trainer');
   return user as Participant;
 }
