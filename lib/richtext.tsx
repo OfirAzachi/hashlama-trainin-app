@@ -9,9 +9,10 @@ import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
 
-// Bold (**text**) or a stored @mention token (@[Name](uuid)) — whichever
-// comes first wins, so the two can appear freely mixed in the same line.
-const INLINE_PATTERN = /\*\*([^*]+)\*\*|@\[([^\]]+)\]\([0-9a-fA-F-]{36}\)/g;
+// Bold (**text**) or a stored @mention token (@[Name](uuid), or the special
+// "all" id for a tag-everyone mention) — whichever comes first wins, so the
+// two can appear freely mixed in the same line.
+const INLINE_PATTERN = /\*\*([^*]+)\*\*|@\[([^\]]+)\]\((?:[0-9a-fA-F-]{36}|all)\)/g;
 
 /** Renders **bold** / "- " / "N. " / @mention tokens as styled text, real lists and mention chips. */
 export function renderFormattedText(text: string): ReactNode {

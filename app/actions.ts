@@ -6,6 +6,7 @@ import {
   deleteMedia,
   deleteSession,
   getMediaOwner,
+  getUsers,
   getUsersByIds,
   insertComment,
   insertLogs,
@@ -85,16 +86,20 @@ export async function submitSessionLog(
   return { ok: true, data: created };
 }
 
-// A mention the client inserted from the @-autocomplete: @[Display Name](user-uuid).
-// Parsed back out here to resolve who gets notified — never trusted at face
-// value, the ids are re-validated against real cohort members before use.
-const MENTION_PATTERN = /@\[[^\]]+\]\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/gi;
+// A mention the client inserted from the @-autocomplete: @[Display Name](user-uuid),
+// or the reserved id "all" for a tag-everyone mention. Parsed back out here
+// to resolve who gets notified — never trusted at face value, real-user ids
+// are re-validated against actual cohort members before use.
+const MENTION_PATTERN = /@\[[^\]]+\]\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|all)\)/gi;
 
 /** Notifies every validly-@mentioned user found in `text` — a post caption or a comment. */
 async function notifyMentions(actorId: string, mediaId: string, commentId: string | null, text: string) {
   const mentionedIds = [...text.matchAll(MENTION_PATTERN)].map((match) => match[1]);
   if (mentionedIds.length === 0) return;
-  const validUsers = await getUsersByIds([...new Set(mentionedIds)]);
+
+  const validUsers = mentionedIds.includes('all')
+    ? await getUsers()
+    : await getUsersByIds([...new Set(mentionedIds)]);
   if (validUsers.length === 0) return;
   await insertMentionNotifications(
     actorId,

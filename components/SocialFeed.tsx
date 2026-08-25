@@ -16,6 +16,7 @@ import {
   Send,
   Sparkles,
   Trash2,
+  Users,
   X,
 } from 'lucide-react';
 import type { ReactNode, RefObject } from 'react';
@@ -63,7 +64,7 @@ interface SocialFeedProps {
 // A mention the composer inserts: @[Display Name](user-uuid). Rendered as a
 // styled "@Name" chip; the server parses the same pattern to resolve who to
 // notify.
-const MENTION_RENDER_PATTERN = /@\[([^\]]+)\]\([0-9a-fA-F-]{36}\)/g;
+const MENTION_RENDER_PATTERN = /@\[([^\]]+)\]\((?:[0-9a-fA-F-]{36}|all)\)/g;
 
 function renderCommentBody(body: string): ReactNode[] {
   const parts: ReactNode[] = [];
@@ -119,13 +120,17 @@ function useMentionAutocomplete(
           .filter((user) => user.name.toLowerCase().includes(mentionQuery.toLowerCase()))
           .slice(0, 5)
       : [];
+  // A pinned "tag everyone" option — filterable the same way a name is, so
+  // typing "@כ" still surfaces it alongside real matches.
+  const showAllOption = mentionQuery !== null && 'כולם'.includes(mentionQuery.toLowerCase());
+  const menuOpen = suggestions.length > 0 || showAllOption;
 
   // Positioned in the viewport (not the field) and portaled to <body> — posts
   // and their media containers use overflow-hidden to clip photo corners,
   // which would otherwise silently clip this dropdown too, making it look
   // like @mentions just don't do anything.
   useLayoutEffect(() => {
-    if (suggestions.length === 0) {
+    if (!menuOpen) {
       setAnchor(null);
       return;
     }
@@ -134,7 +139,7 @@ function useMentionAutocomplete(
     const rect = el.getBoundingClientRect();
     setAnchor({ bottom: window.innerHeight - rect.top + 4, left: rect.left, width: Math.max(rect.width, 224) });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-measure whenever the suggestion set (or query) changes
-  }, [mentionQuery, suggestions.length]);
+  }, [mentionQuery, menuOpen]);
 
   useEffect(() => {
     if (!anchor) return;
@@ -155,7 +160,7 @@ function useMentionAutocomplete(
     setMentionQuery(match ? match[1] : null);
   };
 
-  const insertMention = (user: User) => {
+  const insertMentionValue = (id: string, name: string) => {
     const el = elRef.current;
     const cursor = el?.selectionStart ?? value.length;
     const beforeCursor = value.slice(0, cursor);
@@ -163,9 +168,9 @@ function useMentionAutocomplete(
     if (atIndex === -1) return;
     const before = value.slice(0, atIndex);
     const after = value.slice(cursor);
-    const insertion = `@${user.name} `;
+    const insertion = `@${name} `;
     onChange(before + insertion + after);
-    setMentions((current) => (current.some((m) => m.id === user.id) ? current : [...current, { id: user.id, name: user.name }]));
+    setMentions((current) => (current.some((m) => m.id === id) ? current : [...current, { id, name }]));
     setMentionQuery(null);
     requestAnimationFrame(() => {
       const pos = before.length + insertion.length;
@@ -176,9 +181,14 @@ function useMentionAutocomplete(
 
   return {
     suggestions,
+    showAllOption,
+    menuOpen,
     anchor,
     handleChange,
-    insertMention,
+    insertMention: (user: User) => insertMentionValue(user.id, user.name),
+    // "all" is a reserved id the server expands to every cohort member —
+    // never a real user id, so there's no collision risk.
+    insertAllMention: () => insertMentionValue('all', 'כולם'),
     closeMenu: () => setMentionQuery(null),
     /** Call once the field's text has been submitted, to clear tracked mentions. */
     reset: () => {
@@ -195,16 +205,37 @@ function MentionMenu({
   anchor,
   suggestions,
   onSelect,
+  showAllOption,
+  onSelectAll,
 }: {
   anchor: { bottom: number; left: number; width: number };
   suggestions: User[];
   onSelect: (user: User) => void;
+  showAllOption?: boolean;
+  onSelectAll?: () => void;
 }) {
   return createPortal(
     <ul
       style={{ position: 'fixed', bottom: anchor.bottom, left: anchor.left, width: anchor.width }}
       className="z-50 overflow-hidden rounded-xl border border-line bg-surface shadow-lg"
     >
+      {showAllOption && onSelectAll ? (
+        <li>
+          <button
+            type="button"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              onSelectAll();
+            }}
+            className="flex w-full items-center gap-2 border-b border-line px-3 py-2 text-start text-sm font-medium text-accent hover:bg-elevated"
+          >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/10 text-accent">
+              <Users aria-hidden className="h-4 w-4" />
+            </span>
+            תיוג כולם
+          </button>
+        </li>
+      ) : null}
       {suggestions.map((user) => (
         <li key={user.id}>
           <button
@@ -495,13 +526,19 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
         autoFocus
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
-            if (editMention.suggestions.length > 0) editMention.closeMenu();
+            if (editMention.menuOpen) editMention.closeMenu();
             else setIsEditing(false);
           }
         }}
       />
-      {editMention.anchor && editMention.suggestions.length > 0 ? (
-        <MentionMenu anchor={editMention.anchor} suggestions={editMention.suggestions} onSelect={editMention.insertMention} />
+      {editMention.anchor && editMention.menuOpen ? (
+        <MentionMenu
+          anchor={editMention.anchor}
+          suggestions={editMention.suggestions}
+          onSelect={editMention.insertMention}
+          showAllOption={editMention.showAllOption}
+          onSelectAll={editMention.insertAllMention}
+        />
       ) : null}
       {editError ? (
         <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
@@ -672,11 +709,13 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
       ) : null}
 
       {/* add a comment */}
-      {commentMention.anchor && commentMention.suggestions.length > 0 ? (
+      {commentMention.anchor && commentMention.menuOpen ? (
         <MentionMenu
           anchor={commentMention.anchor}
           suggestions={commentMention.suggestions}
           onSelect={commentMention.insertMention}
+          showAllOption={commentMention.showAllOption}
+          onSelectAll={commentMention.insertAllMention}
         />
       ) : null}
       <div className="flex items-center gap-2 border-t border-line px-3 py-2">
@@ -689,7 +728,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
           value={draft}
           onChange={(event) => commentMention.handleChange(event.target)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && commentMention.suggestions.length === 0) {
+            if (event.key === 'Enter' && !commentMention.menuOpen) {
               event.preventDefault();
               onComment();
             } else if (event.key === 'Escape') {
@@ -869,11 +908,13 @@ function Composer({ viewer, sessions, users }: { viewer: User; sessions: Trainin
                 }}
                 rows={dataUrl ? 2 : 6}
               />
-              {captionMention.anchor && captionMention.suggestions.length > 0 ? (
+              {captionMention.anchor && captionMention.menuOpen ? (
                 <MentionMenu
                   anchor={captionMention.anchor}
                   suggestions={captionMention.suggestions}
                   onSelect={captionMention.insertMention}
+                  showAllOption={captionMention.showAllOption}
+                  onSelectAll={captionMention.insertAllMention}
                 />
               ) : null}
             </div>
