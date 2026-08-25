@@ -12,7 +12,7 @@ import {
   buildParticipantSummary,
 } from './metrics';
 import { targetsGroup } from './groups';
-import { groupStandings, repsFromRaw, sessionLeaderboard, summarisePoints } from './points';
+import { groupStandings, repsFromRaw, sessionLeaderboard, summarisePoints, unitStandings } from './points';
 import { scoreSegment, segmentsForGroup } from './running';
 import { findExercise, roundCount } from './catalog';
 import { createClient } from './supabase/server';
@@ -1209,8 +1209,19 @@ export async function getHomeHighlights(): Promise<HomeHighlights> {
 
   const kilometres = runningLogs.reduce((sum, log) => sum + log.total_distance_meters, 0) / 1000;
 
+  const unitRace = unitStandings({
+    participants,
+    strengthLogs,
+    runningPoints: runningLogs.map((log) => ({
+      session_id: log.session_id,
+      user_id: log.user_id,
+      points: log.points,
+    })),
+  });
+
   return {
     standings,
+    unitStandings: unitRace,
     topScorers,
     runImprovers,
     pushupImprovers,

@@ -299,8 +299,8 @@ export default function MediaGallery({
               <button
                 type="button"
                 onClick={() => setActive(null)}
-                className="btn-ghost h-9 w-9 p-0"
-aria-label="סגירת התמונה"
+                className="btn-ghost h-10 w-10 p-0"
+                aria-label="סגירת התמונה"
               >
                 <X aria-hidden className="h-5 w-5" />
               </button>

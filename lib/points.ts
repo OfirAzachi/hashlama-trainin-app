@@ -174,3 +174,55 @@ export function groupStandings(input: {
     };
   }).sort((a, b) => b.points_per_member - a.points_per_member);
 }
+
+/* -------------------------------------------------------- unit standings */
+
+export interface UnitStanding {
+  unit: string;
+  /** Points from every training type, combined. */
+  points: number;
+  points_per_member: number;
+  members: number;
+}
+
+/**
+ * The same per-member race as the group table, but by real-world unit
+ * instead of training group — so a big unit's raw point total never
+ * outranks a small unit that's actually pulling more weight per person.
+ * Participants without a unit on file (roster gaps) are left out rather
+ * than lumped into a meaningless "no unit" row.
+ */
+export function unitStandings(input: {
+  participants: Participant[];
+  strengthLogs: StrengthLog[];
+  runningPoints: Array<{ session_id: string; user_id: string; points: number }>;
+}): UnitStanding[] {
+  const unitOf = new Map(input.participants.map((person) => [person.id, person.unit]));
+
+  const membersByUnit = new Map<string, number>();
+  input.participants.forEach((person) => {
+    if (!person.unit) return;
+    membersByUnit.set(person.unit, (membersByUnit.get(person.unit) ?? 0) + 1);
+  });
+
+  const pointsByUnit = new Map<string, number>();
+  [...input.strengthLogs.map((log) => ({ user_id: log.user_id, points: log.points })),
+   ...input.runningPoints.map((log) => ({ user_id: log.user_id, points: log.points }))]
+    .forEach((entry) => {
+      const unit = unitOf.get(entry.user_id);
+      if (!unit) return;
+      pointsByUnit.set(unit, (pointsByUnit.get(unit) ?? 0) + entry.points);
+    });
+
+  return [...membersByUnit.entries()]
+    .map(([unit, members]) => {
+      const points = pointsByUnit.get(unit) ?? 0;
+      return {
+        unit,
+        points,
+        points_per_member: members > 0 ? Math.round(points / members) : 0,
+        members,
+      };
+    })
+    .sort((a, b) => b.points_per_member - a.points_per_member);
+}

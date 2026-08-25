@@ -16,7 +16,8 @@ import {
   X,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useOptimistic, useRef, useState, useTransition } from 'react';
+import { useEffect, useLayoutEffect, useOptimistic, useRef, useState, useTransition } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 
 import {
@@ -223,6 +224,37 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
           .slice(0, 5)
       : [];
 
+  // Positioned in the viewport (not the card) and portaled to <body> — the
+  // card has overflow-hidden to clip its photo's corners, which would
+  // otherwise silently clip this dropdown too, making it look like @mentions
+  // just don't do anything.
+  const [mentionAnchor, setMentionAnchor] = useState<{ bottom: number; left: number; width: number } | null>(
+    null,
+  );
+
+  useLayoutEffect(() => {
+    if (mentionSuggestions.length === 0) {
+      setMentionAnchor(null);
+      return;
+    }
+    const el = commentInputRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setMentionAnchor({ bottom: window.innerHeight - rect.top + 4, left: rect.left, width: Math.max(rect.width, 224) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-measure whenever the suggestion set (or query) changes
+  }, [mentionQuery, mentionSuggestions.length]);
+
+  useEffect(() => {
+    if (!mentionAnchor) return;
+    const close = () => setMentionQuery(null);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [mentionAnchor]);
+
   const onDraftChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
     const cursor = event.target.selectionStart ?? value.length;
@@ -300,9 +332,8 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
       </div>
     </div>
   ) : caption ? (
+    // The author's name already shows in the header right above, so it's not repeated here.
     <p className={cn('whitespace-pre-wrap text-sm text-ink', !hasMedia && 'text-[15px] leading-relaxed')}>
-      {hasMedia ? <span className="font-semibold">{post.author.name.split(' ')[0]}</span> : null}
-      {hasMedia ? ' ' : null}
       {caption}
     </p>
   ) : null;
@@ -349,7 +380,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
               type="button"
               onClick={startEdit}
               aria-label="עריכת הפוסט"
-              className="btn-ghost h-8 w-8 p-0 text-muted hover:text-ink"
+              className="btn-ghost h-10 w-10 p-0 text-muted hover:text-ink"
             >
               <Pencil aria-hidden className="h-4 w-4" />
             </button>
@@ -358,7 +389,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
               onClick={onDelete}
               disabled={isDeleting}
               aria-label="מחיקת הפוסט"
-              className="btn-ghost h-8 w-8 p-0 text-muted hover:text-rose-500 disabled:opacity-40"
+              className="btn-ghost h-10 w-10 p-0 text-muted hover:text-rose-500 disabled:opacity-40"
             >
               {isDeleting ? (
                 <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
@@ -455,26 +486,37 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
       ) : null}
 
       {/* add a comment */}
-      <div className="relative flex items-center gap-2 border-t border-line px-3 py-2">
-        {mentionSuggestions.length > 0 ? (
-          <ul className="absolute bottom-full start-3 z-10 mb-1 w-56 overflow-hidden rounded-xl border border-line bg-surface shadow-lg">
-            {mentionSuggestions.map((user) => (
-              <li key={user.id}>
-                <button
-                  type="button"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    insertMention(user);
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-ink hover:bg-elevated"
-                >
-                  <Avatar name={user.name} groupId={user.team} size="sm" />
-                  {user.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+      {mentionAnchor && mentionSuggestions.length > 0
+        ? createPortal(
+            <ul
+              style={{
+                position: 'fixed',
+                bottom: mentionAnchor.bottom,
+                left: mentionAnchor.left,
+                width: mentionAnchor.width,
+              }}
+              className="z-50 overflow-hidden rounded-xl border border-line bg-surface shadow-lg"
+            >
+              {mentionSuggestions.map((user) => (
+                <li key={user.id}>
+                  <button
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      insertMention(user);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-ink hover:bg-elevated"
+                  >
+                    <Avatar name={user.name} groupId={user.team} size="sm" />
+                    {user.name}
+                  </button>
+                </li>
+              ))}
+            </ul>,
+            document.body,
+          )
+        : null}
+      <div className="flex items-center gap-2 border-t border-line px-3 py-2">
         <Avatar name={viewer.name} groupId={viewer.team} size="sm" />
         <input
           ref={commentInputRef}
@@ -629,7 +671,7 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
                 type="button"
                 onClick={removeFile}
                 aria-label="הסרת הקובץ"
-                className="absolute end-2 top-2 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80"
+                className="absolute end-2 top-2 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
               >
                 <X aria-hidden className="h-4 w-4" />
               </button>

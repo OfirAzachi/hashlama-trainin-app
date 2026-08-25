@@ -269,7 +269,7 @@ function AttachedGameRounds({
             />
             <button
               type="button"
-              className="btn-ghost h-8 w-8 shrink-0 p-0 text-rose-500"
+              className="btn-ghost h-10 w-10 shrink-0 p-0 text-rose-500"
               aria-label={`הסרת סבב ${index + 1}`}
               disabled={exerciseIds.length === 1}
               onClick={() => onRemove(index)}
@@ -1175,7 +1175,7 @@ export default function WeeklyTrainingBuilder({
                       {runMode === 'intervals' && Number(segment.repeats) > 1 ? (
                         <button
                           type="button"
-                          className="btn-ghost h-8 w-8 p-0 text-accent"
+                          className="btn-ghost h-10 w-10 p-0 text-accent"
                           aria-label={`פיצול מקטע ${index + 1} ל-${segment.repeats} חזרות נפרדות`}
                           title="פיצול לחזרות נפרדות — כדי לתת לכל חזרה קצב ומנוחה משלה"
                           onClick={() => splitSegmentIntoReps(segment.uid)}
@@ -1185,7 +1185,7 @@ export default function WeeklyTrainingBuilder({
                       ) : null}
                       <button
                         type="button"
-                        className="btn-ghost h-8 w-8 p-0 text-rose-500"
+                        className="btn-ghost h-10 w-10 p-0 text-rose-500"
                         aria-label={`הסרת מקטע ${index + 1}`}
                         disabled={segments.length === 1}
                         onClick={() => removeSegment(segment.uid)}
@@ -1521,7 +1521,7 @@ export default function WeeklyTrainingBuilder({
           <div className="flex items-center justify-between gap-2">
             <button type="button" className="btn-ghost" onClick={() => setStep(1)}>
               <ArrowLeft aria-hidden className="h-4 w-4 rtl:rotate-180" />
-              Back
+              חזרה
             </button>
             <button
               type="button"

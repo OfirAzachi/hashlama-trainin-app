@@ -18,7 +18,7 @@ import { Avatar, Badge, Card, ProgressBar } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 import { formatPercent, formatSignedNumber } from '@/lib/format';
 import { GROUPS_BY_ID, GROUP_LIST } from '@/lib/groups';
-import type { GroupStanding } from '@/lib/points';
+import type { GroupStanding, UnitStanding } from '@/lib/points';
 import type { GroupId, Participant } from '@/lib/types';
 
 /** "Biggest improvement" is always a percentage — never a raw time or count. */
@@ -29,6 +29,8 @@ export interface ImprovementEntry {
 
 export interface HomeHighlights {
   standings: GroupStanding[];
+  /** Same per-member race, grouped by real-world unit instead of training group. */
+  unitStandings: UnitStanding[];
   /** Top point scorers across the whole course. */
   topScorers: Array<{ participant: Participant; points: number }>;
   /** Biggest 3km improvement, percent only. */
@@ -64,7 +66,7 @@ export default function GroupStandings({
   myGroup?: GroupId | null;
 }) {
   const [selected, setSelected] = useState<GroupId | null>(myGroup ?? null);
-  const { standings, totals } = highlights;
+  const { standings, unitStandings, totals } = highlights;
   const leader = standings[0];
   const focus = selected ?? standings[0]?.team ?? 'A';
   const focusRow = standings.find((row) => row.team === focus) ?? standings[0];
@@ -257,6 +259,34 @@ export default function GroupStandings({
           </Card>
         ) : null}
       </section>
+
+      {/* ----------------------------------------------- unit standings */}
+      {unitStandings.length > 0 ? (
+        <section aria-label="מקצה היחידות" className="space-y-3">
+          <div>
+            <h2 className="text-lg font-semibold text-ink">מקצה היחידות</h2>
+            <p className="text-sm text-muted">
+              מדורג לפי נקודות לחבר יחידה — כדי שיחידה קטנה לא תיפגע מהגודל שלה.
+            </p>
+          </div>
+          <Card className="card-pad">
+            <ol className="space-y-2">
+              {unitStandings.map((row, index) => (
+                <li key={row.unit} className="flex items-center gap-3">
+                  <span className="w-5 shrink-0 text-center text-xs font-semibold text-muted tnum">
+                    {index + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{row.unit}</span>
+                  <span className="shrink-0 text-xs text-muted tnum">{row.members} מתאמנים</span>
+                  <span className="shrink-0 text-sm font-semibold tnum text-ink">
+                    {row.points_per_member} נק׳ לחבר
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </Card>
+        </section>
+      ) : null}
 
       {/* --------------------------------------------------- highlights */}
       <section aria-label="מצטייני הקורס" className="grid gap-4 sm:grid-cols-2">

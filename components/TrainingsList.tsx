@@ -31,25 +31,22 @@ import type { Participant, TrainingCard, TrainingStatus } from '@/lib/types';
 
 const STATUS: Record<
   TrainingStatus,
-  { label: string; tone: 'positive' | 'negative' | 'warning'; icon: typeof CheckCircle2; help: string }
+  { label: string; tone: 'positive' | 'negative' | 'warning'; icon: typeof CheckCircle2 }
 > = {
   completed: {
     label: 'הושלם',
     tone: 'positive',
     icon: CheckCircle2,
-    help: 'העלית את התוצאות שלך לאימון הזה.',
   },
   due: {
     label: 'ממתין לתוצאות שלך',
     tone: 'warning',
     icon: Clock,
-    help: 'האימון עדיין פתוח — העלו תוצאות כדי להשלים אותו.',
   },
   missed: {
     label: 'לא הושלם',
     tone: 'negative',
     icon: XCircle,
-    help: 'לא הועלו תוצאות, ולכן האימון נחשב כלא הושלם.',
   },
 };
 
@@ -229,7 +226,7 @@ export default function TrainingsList({
                           {exercise?.name ?? log.exercise_id}
                         </span>
                         <span className="shrink-0 text-xs text-muted tnum">
-                          {log.reps} × {log.level} = {log.points} pts
+                          {log.reps} × {log.level} = {log.points} נק׳
                         </span>
                       </li>
                     );
@@ -274,8 +271,6 @@ export default function TrainingsList({
               })}
             </ul>
           ) : null}
-
-          <p className="text-xs text-muted">{status.help}</p>
 
           <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
             <button
