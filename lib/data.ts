@@ -833,11 +833,11 @@ export async function insertComment(
 
 /* ----------------------------------------------------- mailbox / mentions */
 
-/** Notification rows for @mentions found in a just-posted comment. */
+/** Notification rows for @mentions found in a just-posted comment, or (commentId null) a post caption. */
 export async function insertMentionNotifications(
   actorId: string,
   mediaId: string,
-  commentId: string,
+  commentId: string | null,
   recipientIds: string[],
 ): Promise<void> {
   const uniqueRecipients = [...new Set(recipientIds)].filter((id) => id !== actorId);

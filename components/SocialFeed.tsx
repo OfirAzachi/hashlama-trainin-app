@@ -93,6 +93,138 @@ function encodeMentions(raw: string, mentions: Array<{ id: string; name: string 
   return result;
 }
 
+type MentionField = HTMLInputElement | HTMLTextAreaElement;
+
+/**
+ * Shared @-autocomplete behavior for any single text field — the comment
+ * box, the post composer, and the caption editor all use this the same way.
+ * Tracks which real users got inserted so the field's raw text (just
+ * "@Name") can be turned into `@[Name](id)` storage tokens at submit time.
+ */
+function useMentionAutocomplete(
+  elRef: RefObject<MentionField>,
+  value: string,
+  onChange: (next: string) => void,
+  users: User[],
+  excludeUserId: string,
+) {
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentions, setMentions] = useState<Array<{ id: string; name: string }>>([]);
+  const [anchor, setAnchor] = useState<{ bottom: number; left: number; width: number } | null>(null);
+
+  const suggestions =
+    mentionQuery !== null
+      ? users
+          .filter((user) => user.id !== excludeUserId)
+          .filter((user) => user.name.toLowerCase().includes(mentionQuery.toLowerCase()))
+          .slice(0, 5)
+      : [];
+
+  // Positioned in the viewport (not the field) and portaled to <body> — posts
+  // and their media containers use overflow-hidden to clip photo corners,
+  // which would otherwise silently clip this dropdown too, making it look
+  // like @mentions just don't do anything.
+  useLayoutEffect(() => {
+    if (suggestions.length === 0) {
+      setAnchor(null);
+      return;
+    }
+    const el = elRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setAnchor({ bottom: window.innerHeight - rect.top + 4, left: rect.left, width: Math.max(rect.width, 224) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-measure whenever the suggestion set (or query) changes
+  }, [mentionQuery, suggestions.length]);
+
+  useEffect(() => {
+    if (!anchor) return;
+    const close = () => setMentionQuery(null);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [anchor]);
+
+  const handleChange = (el: MentionField) => {
+    const nextValue = el.value;
+    const cursor = el.selectionStart ?? nextValue.length;
+    onChange(nextValue);
+    const match = /@([^\s@]{0,30})$/.exec(nextValue.slice(0, cursor));
+    setMentionQuery(match ? match[1] : null);
+  };
+
+  const insertMention = (user: User) => {
+    const el = elRef.current;
+    const cursor = el?.selectionStart ?? value.length;
+    const beforeCursor = value.slice(0, cursor);
+    const atIndex = beforeCursor.lastIndexOf('@');
+    if (atIndex === -1) return;
+    const before = value.slice(0, atIndex);
+    const after = value.slice(cursor);
+    const insertion = `@${user.name} `;
+    onChange(before + insertion + after);
+    setMentions((current) => (current.some((m) => m.id === user.id) ? current : [...current, { id: user.id, name: user.name }]));
+    setMentionQuery(null);
+    requestAnimationFrame(() => {
+      const pos = before.length + insertion.length;
+      el?.focus();
+      el?.setSelectionRange(pos, pos);
+    });
+  };
+
+  return {
+    suggestions,
+    anchor,
+    handleChange,
+    insertMention,
+    closeMenu: () => setMentionQuery(null),
+    /** Call once the field's text has been submitted, to clear tracked mentions. */
+    reset: () => {
+      setMentions([]);
+      setMentionQuery(null);
+    },
+    /** Turns the field's plain "@Name" text into `@[Name](id)` storage tokens. */
+    encode: (raw: string) => encodeMentions(raw, mentions),
+  };
+}
+
+/** The floating @mention suggestion list, portaled to `<body>` so it's never clipped by a card. */
+function MentionMenu({
+  anchor,
+  suggestions,
+  onSelect,
+}: {
+  anchor: { bottom: number; left: number; width: number };
+  suggestions: User[];
+  onSelect: (user: User) => void;
+}) {
+  return createPortal(
+    <ul
+      style={{ position: 'fixed', bottom: anchor.bottom, left: anchor.left, width: anchor.width }}
+      className="z-50 overflow-hidden rounded-xl border border-line bg-surface shadow-lg"
+    >
+      {suggestions.map((user) => (
+        <li key={user.id}>
+          <button
+            type="button"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              onSelect(user);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-ink hover:bg-elevated"
+          >
+            <Avatar name={user.name} groupId={user.team} size="sm" />
+            {user.name}
+          </button>
+        </li>
+      ))}
+    </ul>,
+    document.body,
+  );
+}
+
 /* --------------------------------------------------------- rich text */
 
 // A light markdown subset instead of a raw HTML editor: **bold**, "- " for a
@@ -258,9 +390,8 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
   const router = useRouter();
   const [showAllComments, setShowAllComments] = useState(false);
   const [draft, setDraft] = useState('');
-  const [mentions, setMentions] = useState<Array<{ id: string; name: string }>>([]);
-  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const commentInputRef = useRef<HTMLInputElement>(null);
+  const commentMention = useMentionAutocomplete(commentInputRef, draft, setDraft, users, viewer.id);
   const [comments, setComments] = useState(post.comments);
   const [isPending, startTransition] = useTransition();
 
@@ -269,6 +400,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
   const [isEditing, setIsEditing] = useState(false);
   const [editDraft, setEditDraft] = useState(caption);
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const editMention = useMentionAutocomplete(editTextareaRef, editDraft, setEditDraft, users, viewer.id);
   const [editError, setEditError] = useState<string | null>(null);
   const [isDeleted, setIsDeleted] = useState(false);
   const [isSaving, startSaveTransition] = useTransition();
@@ -288,12 +420,13 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
 
   const saveEdit = () => {
     startSaveTransition(async () => {
-      const result = await updateMediaPost(post.media.id, viewer.id, editDraft);
+      const result = await updateMediaPost(post.media.id, viewer.id, editMention.encode(editDraft));
       if (!result.ok) {
         setEditError(result.error);
         return;
       }
       setCaption(result.data.caption ?? '');
+      editMention.reset();
       setIsEditing(false);
       router.refresh();
     });
@@ -323,79 +456,12 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
     });
   };
 
-  const mentionSuggestions =
-    mentionQuery !== null
-      ? users
-          .filter((user) => user.id !== viewer.id)
-          .filter((user) => user.name.toLowerCase().includes(mentionQuery.toLowerCase()))
-          .slice(0, 5)
-      : [];
-
-  // Positioned in the viewport (not the card) and portaled to <body> — the
-  // card has overflow-hidden to clip its photo's corners, which would
-  // otherwise silently clip this dropdown too, making it look like @mentions
-  // just don't do anything.
-  const [mentionAnchor, setMentionAnchor] = useState<{ bottom: number; left: number; width: number } | null>(
-    null,
-  );
-
-  useLayoutEffect(() => {
-    if (mentionSuggestions.length === 0) {
-      setMentionAnchor(null);
-      return;
-    }
-    const el = commentInputRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    setMentionAnchor({ bottom: window.innerHeight - rect.top + 4, left: rect.left, width: Math.max(rect.width, 224) });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-measure whenever the suggestion set (or query) changes
-  }, [mentionQuery, mentionSuggestions.length]);
-
-  useEffect(() => {
-    if (!mentionAnchor) return;
-    const close = () => setMentionQuery(null);
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
-    return () => {
-      window.removeEventListener('scroll', close, true);
-      window.removeEventListener('resize', close);
-    };
-  }, [mentionAnchor]);
-
-  const onDraftChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    const cursor = event.target.selectionStart ?? value.length;
-    setDraft(value);
-    const match = /@([^\s@]{0,30})$/.exec(value.slice(0, cursor));
-    setMentionQuery(match ? match[1] : null);
-  };
-
-  const insertMention = (user: User) => {
-    const input = commentInputRef.current;
-    const cursor = input?.selectionStart ?? draft.length;
-    const beforeCursor = draft.slice(0, cursor);
-    const atIndex = beforeCursor.lastIndexOf('@');
-    if (atIndex === -1) return;
-    const before = draft.slice(0, atIndex);
-    const after = draft.slice(cursor);
-    const insertion = `@${user.name} `;
-    setDraft(before + insertion + after);
-    setMentions((current) => (current.some((m) => m.id === user.id) ? current : [...current, { id: user.id, name: user.name }]));
-    setMentionQuery(null);
-    requestAnimationFrame(() => {
-      const pos = before.length + insertion.length;
-      input?.focus();
-      input?.setSelectionRange(pos, pos);
-    });
-  };
-
   const onComment = () => {
     const body = draft.trim();
     if (!body) return;
-    const finalBody = encodeMentions(body, mentions);
+    const finalBody = commentMention.encode(body);
     setDraft('');
-    setMentions([]);
-    setMentionQuery(null);
+    commentMention.reset();
     startTransition(async () => {
       const result = await addMediaComment(post.media.id, viewer.id, finalBody);
       if (result.ok) {
@@ -412,20 +478,26 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
   const hasMedia = Boolean(post.media.image_url);
 
   const captionArea = isEditing ? (
-    <div className="space-y-1.5">
+    <div className="relative space-y-1.5">
       <FormattingToolbar textareaRef={editTextareaRef} value={editDraft} onChange={setEditDraft} />
       <textarea
         ref={editTextareaRef}
         className="input min-h-[5rem] resize-y rounded-t-none py-2 leading-relaxed"
         value={editDraft}
-        onChange={(event) => setEditDraft(event.target.value)}
-        placeholder="כיתוב"
+        onChange={(event) => editMention.handleChange(event.target)}
+        placeholder="כיתוב (@ כדי לתייג)"
         aria-label="עריכת הכיתוב"
         autoFocus
         onKeyDown={(event) => {
-          if (event.key === 'Escape') setIsEditing(false);
+          if (event.key === 'Escape') {
+            if (editMention.suggestions.length > 0) editMention.closeMenu();
+            else setIsEditing(false);
+          }
         }}
       />
+      {editMention.anchor && editMention.suggestions.length > 0 ? (
+        <MentionMenu anchor={editMention.anchor} suggestions={editMention.suggestions} onSelect={editMention.insertMention} />
+      ) : null}
       {editError ? (
         <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
           {editError}
@@ -595,36 +667,13 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
       ) : null}
 
       {/* add a comment */}
-      {mentionAnchor && mentionSuggestions.length > 0
-        ? createPortal(
-            <ul
-              style={{
-                position: 'fixed',
-                bottom: mentionAnchor.bottom,
-                left: mentionAnchor.left,
-                width: mentionAnchor.width,
-              }}
-              className="z-50 overflow-hidden rounded-xl border border-line bg-surface shadow-lg"
-            >
-              {mentionSuggestions.map((user) => (
-                <li key={user.id}>
-                  <button
-                    type="button"
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      insertMention(user);
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-ink hover:bg-elevated"
-                  >
-                    <Avatar name={user.name} groupId={user.team} size="sm" />
-                    {user.name}
-                  </button>
-                </li>
-              ))}
-            </ul>,
-            document.body,
-          )
-        : null}
+      {commentMention.anchor && commentMention.suggestions.length > 0 ? (
+        <MentionMenu
+          anchor={commentMention.anchor}
+          suggestions={commentMention.suggestions}
+          onSelect={commentMention.insertMention}
+        />
+      ) : null}
       <div className="flex items-center gap-2 border-t border-line px-3 py-2">
         <Avatar name={viewer.name} groupId={viewer.team} size="sm" />
         <input
@@ -633,13 +682,13 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
           className="input border-0 bg-transparent px-1 py-2 focus:ring-0"
           placeholder="הוספת תגובה… (@ כדי לתייג)"
           value={draft}
-          onChange={onDraftChange}
+          onChange={(event) => commentMention.handleChange(event.target)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && mentionSuggestions.length === 0) {
+            if (event.key === 'Enter' && commentMention.suggestions.length === 0) {
               event.preventDefault();
               onComment();
             } else if (event.key === 'Escape') {
-              setMentionQuery(null);
+              commentMention.closeMenu();
             }
           }}
           aria-label={`תגובה לתמונה של ${post.author.name}`}
@@ -659,7 +708,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
 
 /* ---------------------------------------------------------- composer */
 
-function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSession[] }) {
+function Composer({ viewer, sessions, users }: { viewer: User; sessions: TrainingSession[]; users: User[] }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const captionRef = useRef<HTMLTextAreaElement>(null);
@@ -669,6 +718,7 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
   const [fileName, setFileName] = useState<string | null>(null);
   const [isImage, setIsImage] = useState(true);
   const [caption, setCaption] = useState('');
+  const captionMention = useMentionAutocomplete(captionRef, caption, setCaption, users, viewer.id);
   const [sessionId, setSessionId] = useState(sessions[sessions.length - 1]?.id ?? '');
   const [noSession, setNoSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -679,6 +729,7 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
     setFileName(null);
     setIsImage(true);
     setCaption('');
+    captionMention.reset();
     setNoSession(false);
     setError(null);
     setOpen(false);
@@ -723,7 +774,7 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
         session_id: noSession ? null : sessionId,
         user_id: viewer.id,
         image_url: dataUrl,
-        caption: caption.trim() || undefined,
+        caption: caption.trim() ? captionMention.encode(caption.trim()) : undefined,
         file_name: fileName,
       });
       if (!result.ok) {
@@ -794,17 +845,33 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
               {noSession ? <span className="font-normal text-muted">(חובה להודעה כללית)</span> : null}
             </label>
             <FormattingToolbar textareaRef={captionRef} value={caption} onChange={setCaption} />
-            <textarea
-              ref={captionRef}
-              id="feed-caption"
-              className="input min-h-[6rem] resize-y rounded-t-none py-2 leading-relaxed"
-              placeholder={
-                noSession ? 'מה ברצונכם למסור?' : dataUrl ? 'איך היה האימון?' : 'כתבו כאן טקסט, כולל שורות וסעיפים…'
-              }
-              value={caption}
-              onChange={(event) => setCaption(event.target.value)}
-              rows={dataUrl ? 2 : 6}
-            />
+            <div className="relative">
+              <textarea
+                ref={captionRef}
+                id="feed-caption"
+                className="input min-h-[6rem] resize-y rounded-t-none py-2 leading-relaxed"
+                placeholder={
+                  noSession
+                    ? 'מה ברצונכם למסור? (@ כדי לתייג)'
+                    : dataUrl
+                      ? 'איך היה האימון? (@ כדי לתייג)'
+                      : 'כתבו כאן טקסט, כולל שורות וסעיפים… (@ כדי לתייג)'
+                }
+                value={caption}
+                onChange={(event) => captionMention.handleChange(event.target)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') captionMention.closeMenu();
+                }}
+                rows={dataUrl ? 2 : 6}
+              />
+              {captionMention.anchor && captionMention.suggestions.length > 0 ? (
+                <MentionMenu
+                  anchor={captionMention.anchor}
+                  suggestions={captionMention.suggestions}
+                  onSelect={captionMention.insertMention}
+                />
+              ) : null}
+            </div>
           </div>
 
           {!dataUrl ? (
@@ -886,7 +953,7 @@ export default function SocialFeed({ posts, viewer, sessions, users }: SocialFee
 
   return (
     <div className="mx-auto max-w-xl space-y-4">
-      <Composer viewer={viewer} sessions={sessions} />
+      <Composer viewer={viewer} sessions={sessions} users={users} />
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="סינון הפיד לפי קבוצה">
         {[{ id: 'all' as const, label: 'כולם', color: undefined }, ...GROUP_LIST.map((entry) => ({

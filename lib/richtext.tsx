@@ -9,17 +9,29 @@ import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
 
-/** Renders the same **bold** / "- " / "N. " subset as styled bold text and real lists. */
+// Bold (**text**) or a stored @mention token (@[Name](uuid)) — whichever
+// comes first wins, so the two can appear freely mixed in the same line.
+const INLINE_PATTERN = /\*\*([^*]+)\*\*|@\[([^\]]+)\]\([0-9a-fA-F-]{36}\)/g;
+
+/** Renders **bold** / "- " / "N. " / @mention tokens as styled text, real lists and mention chips. */
 export function renderFormattedText(text: string): ReactNode {
   const renderInline = (line: string, keyBase: string): ReactNode[] => {
     const parts: ReactNode[] = [];
-    const pattern = /\*\*([^*]+)\*\*/g;
     let last = 0;
     let index = 0;
-    for (const match of line.matchAll(pattern)) {
+    for (const match of line.matchAll(INLINE_PATTERN)) {
       const at = match.index ?? 0;
       if (at > last) parts.push(line.slice(last, at));
-      parts.push(<strong key={`${keyBase}-${index++}`}>{match[1]}</strong>);
+      const [, bold, mentionName] = match;
+      if (mentionName !== undefined) {
+        parts.push(
+          <span key={`${keyBase}-${index++}`} className="font-medium text-accent">
+            @{mentionName}
+          </span>,
+        );
+      } else {
+        parts.push(<strong key={`${keyBase}-${index++}`}>{bold}</strong>);
+      }
       last = at + match[0].length;
     }
     if (last < line.length) parts.push(line.slice(last));

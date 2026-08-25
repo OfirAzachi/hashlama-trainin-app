@@ -85,6 +85,25 @@ export async function submitSessionLog(
   return { ok: true, data: created };
 }
 
+// A mention the client inserted from the @-autocomplete: @[Display Name](user-uuid).
+// Parsed back out here to resolve who gets notified — never trusted at face
+// value, the ids are re-validated against real cohort members before use.
+const MENTION_PATTERN = /@\[[^\]]+\]\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/gi;
+
+/** Notifies every validly-@mentioned user found in `text` — a post caption or a comment. */
+async function notifyMentions(actorId: string, mediaId: string, commentId: string | null, text: string) {
+  const mentionedIds = [...text.matchAll(MENTION_PATTERN)].map((match) => match[1]);
+  if (mentionedIds.length === 0) return;
+  const validUsers = await getUsersByIds([...new Set(mentionedIds)]);
+  if (validUsers.length === 0) return;
+  await insertMentionNotifications(
+    actorId,
+    mediaId,
+    commentId,
+    validUsers.map((user) => user.id),
+  );
+}
+
 const MIME_EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -173,6 +192,7 @@ export async function uploadSessionMedia(
     image_url: imageUrl,
     mime_type: imageUrl && !isImage ? mimeType : null,
   });
+  if (input.caption) await notifyMentions(input.user_id, created.id, null, input.caption);
   revalidatePath('/participant');
   revalidatePath('/trainer');
   revalidatePath('/feed');
@@ -358,11 +378,6 @@ export async function toggleMediaLike(
 
 const MAX_COMMENT_LENGTH = 500;
 
-// A mention the client inserted from the @-autocomplete: @[Display Name](user-uuid).
-// Parsed back out here to resolve who gets notified — never trusted at face
-// value, the ids are re-validated against real cohort members below.
-const MENTION_PATTERN = /@\[[^\]]+\]\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/gi;
-
 export async function addMediaComment(
   mediaId: string,
   userId: string,
@@ -375,19 +390,7 @@ export async function addMediaComment(
   }
 
   const comment = await insertComment(mediaId, userId, text);
-
-  const mentionedIds = [...text.matchAll(MENTION_PATTERN)].map((match) => match[1]);
-  if (mentionedIds.length > 0) {
-    const validUsers = await getUsersByIds([...new Set(mentionedIds)]);
-    if (validUsers.length > 0) {
-      await insertMentionNotifications(
-        userId,
-        mediaId,
-        comment.id,
-        validUsers.map((user) => user.id),
-      );
-    }
-  }
+  await notifyMentions(userId, mediaId, comment.id, text);
 
   revalidatePath('/feed');
   return { ok: true, data: comment };
@@ -425,6 +428,7 @@ export async function updateMediaPost(
   }
 
   const updated = await updateMediaCaption(mediaId, trimmed || null);
+  if (trimmed) await notifyMentions(userId, mediaId, null, trimmed);
   revalidatePath('/feed');
   revalidatePath('/participant');
   revalidatePath('/trainer');
