@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import AppShell from '@/components/AppShell';
+import NotificationBell from '@/components/NotificationBell';
 import ParticipantView from '@/components/ParticipantView';
 import { GROUPS_BY_ID } from '@/lib/groups';
 import { requireParticipant } from '@/lib/auth';
@@ -33,6 +34,7 @@ export default async function ParticipantPage() {
             : ''
       }`}
       user={{ name: participant.name, role: participant.role }}
+      contextSlot={<NotificationBell userId={participant.id} />}
     >
       <ParticipantView snapshot={snapshot} />
     </AppShell>

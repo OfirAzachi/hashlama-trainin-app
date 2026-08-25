@@ -65,7 +65,7 @@ function FileThumb({ fileName, className }: { fileName: string | null; className
 
 /** Picks the right thumbnail for whatever this upload actually is. */
 function MediaThumb({ item, alt, className }: { item: SessionMedia; alt: string; className?: string }) {
-  if (item.mime_type) return <FileThumb fileName={item.file_name} className={className} />;
+  if (item.mime_type || !item.image_url) return <FileThumb fileName={item.file_name} className={className} />;
   return <MediaImage src={item.image_url} alt={alt} className={className} />;
 }
 
@@ -309,7 +309,7 @@ aria-label="סגירת התמונה"
             <MediaThumb item={active} alt={active.caption ?? 'תמונת אימון'} className="max-h-[60vh] w-full" />
             {active.mime_type ? (
               <div className="px-4 pt-3">
-                <a href={active.image_url} target="_blank" rel="noreferrer" className="btn-secondary w-full justify-center">
+                <a href={active.image_url ?? undefined} target="_blank" rel="noreferrer" className="btn-secondary w-full justify-center">
                   <FileText aria-hidden className="h-4 w-4" />
                   פתיחת {active.file_name ?? 'הקובץ'}
                 </a>

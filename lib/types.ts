@@ -124,7 +124,8 @@ export interface SessionMedia {
   /** Null for a trainer's general post — not tied to any specific training. */
   session_id: string | null;
   user_id: string;
-  image_url: string;
+  /** Null for a text-only post — no photo or file attached. */
+  image_url: string | null;
   caption: string | null;
   /** Free-form tags, typically the exercise the photo documents. */
   tags: string[];
@@ -195,8 +196,8 @@ export interface MediaUploadInput {
   /** Omit (or null) for a trainer's general post — only a trainer may do this. */
   session_id?: string | null;
   user_id: string;
-  /** Data URL in mock mode; Supabase Storage public URL in production. */
-  image_url: string;
+  /** Data URL in mock mode; Supabase Storage public URL in production. Omit (or null) for a text-only post. */
+  image_url?: string | null;
   caption?: string;
   tags?: string[];
   /** Set for a non-image file upload. */
@@ -284,6 +285,19 @@ export interface FeedPost {
   likes: number;
   likedByMe: boolean;
   comments: Array<{ comment: MediaComment; author: User }>;
+}
+
+/* --------------------------------------------------------- notifications */
+
+/** The mailbox: created when someone @-mentions a person in a feed comment. */
+export interface NotificationItem {
+  id: string;
+  actor: User;
+  media_id: string;
+  mediaCaption: string | null;
+  commentBody: string | null;
+  read: boolean;
+  created_at: string; // ISO timestamp
 }
 
 /* --------------------------------------------------- training status */

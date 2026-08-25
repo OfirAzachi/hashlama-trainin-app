@@ -173,6 +173,65 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          actor_id: string
+          comment_id: string | null
+          created_at: string
+          id: string
+          media_id: string
+          read_at: string | null
+          recipient_id: string
+        }
+        Insert: {
+          actor_id: string
+          comment_id?: string | null
+          created_at?: string
+          id?: string
+          media_id: string
+          read_at?: string | null
+          recipient_id: string
+        }
+        Update: {
+          actor_id?: string
+          comment_id?: string | null
+          created_at?: string
+          id?: string
+          media_id?: string
+          read_at?: string | null
+          recipient_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "media_comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_media_id_fkey"
+            columns: ["media_id"]
+            isOneToOne: false
+            referencedRelation: "session_media"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roster: {
         Row: {
           confirmed_at: string | null
@@ -443,7 +502,7 @@ export type Database = {
           caption: string | null
           file_name: string | null
           id: string
-          image_url: string
+          image_url: string | null
           mime_type: string | null
           session_id: string | null
           tags: string[]
@@ -454,7 +513,7 @@ export type Database = {
           caption?: string | null
           file_name?: string | null
           id?: string
-          image_url: string
+          image_url?: string | null
           mime_type?: string | null
           session_id?: string | null
           tags?: string[]
@@ -465,7 +524,7 @@ export type Database = {
           caption?: string | null
           file_name?: string | null
           id?: string
-          image_url?: string
+          image_url?: string | null
           mime_type?: string | null
           session_id?: string | null
           tags?: string[]

@@ -3,14 +3,19 @@
 import { revalidatePath } from 'next/cache';
 
 import {
+  deleteMedia,
+  getMediaOwner,
+  getUsersByIds,
   insertComment,
   insertLogs,
   insertMedia,
+  insertMentionNotifications,
   insertSession,
   insertRunningEntries,
   insertStrengthEntries,
   sessionHasLogs,
   toggleLike,
+  updateMediaCaption,
   updateSession,
 } from '@/lib/data';
 import { findExercise, hasFixedExercises } from '@/lib/catalog';
@@ -89,63 +94,68 @@ const MIME_EXTENSIONS: Record<string, string> = {
 };
 
 /**
- * Stores a feed upload — a workout photo tied to a session, or (trainer
- * only) a general post with no session and possibly a non-image file. The
- * client always sends a data URL (or, once already stored, an https URL on
- * re-save); when Supabase is configured this uploads the decoded bytes to
- * the `session-media` bucket and swaps in the public URL before the row is
- * written. Falls back to storing the data URL directly in mock mode (no
- * Supabase configured).
+ * Stores a feed post — a workout photo tied to a session, a (trainer only)
+ * general post with no session and possibly a non-image file, or plain text
+ * with no attachment at all. The client always sends a data URL (or, once
+ * already stored, an https URL on re-save); when Supabase is configured this
+ * uploads the decoded bytes to the `session-media` bucket and swaps in the
+ * public URL before the row is written. Falls back to storing the data URL
+ * directly in mock mode (no Supabase configured).
  */
 export async function uploadSessionMedia(
   input: MediaUploadInput,
 ): Promise<ActionResult<SessionMedia>> {
-  if (!input.image_url) return { ok: false, error: 'לא נבחר קובץ.' };
+  const rawUrl = input.image_url?.trim() || null;
+  const hasCaption = Boolean(input.caption?.trim());
+  if (!rawUrl && !hasCaption) return { ok: false, error: 'כתבו טקסט או צרפו קובץ.' };
 
-  const dataUrlMatch = /^data:([a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(input.image_url);
-  const isHttpUrl = /^https?:\/\//.test(input.image_url);
-  if (!dataUrlMatch && !isHttpUrl) {
+  const dataUrlMatch = rawUrl ? /^data:([a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(rawUrl) : null;
+  const isHttpUrl = rawUrl ? /^https?:\/\//.test(rawUrl) : false;
+  if (rawUrl && !dataUrlMatch && !isHttpUrl) {
     return { ok: false, error: 'סוג הקובץ לא נתמך.' };
   }
   if (dataUrlMatch && !ALLOWED_MEDIA_MIME_TYPES.has(dataUrlMatch[1])) {
     return { ok: false, error: 'סוג הקובץ לא נתמך.' };
   }
 
-  let imageUrl = input.image_url;
+  let imageUrl = rawUrl;
   let mimeType: string | null = null;
+  let bytes: Buffer | null = null;
 
   if (dataUrlMatch) {
     const [, matchedMimeType, base64] = dataUrlMatch;
     mimeType = matchedMimeType;
-    const bytes = Buffer.from(base64, 'base64');
+    bytes = Buffer.from(base64, 'base64');
     if (bytes.byteLength > MAX_MEDIA_BYTES) {
       return { ok: false, error: 'הקובץ גדול מ-10 מגה-בייט.' };
     }
+  }
 
-    if (supabaseConfigured) {
-      const supabase = await createClient();
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-      if (!authUser || authUser.id !== input.user_id) {
-        return { ok: false, error: 'אין הרשאה להעלות קובץ בשם משתמש אחר.' };
+  if (supabaseConfigured) {
+    const supabase = await createClient();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    if (!authUser || authUser.id !== input.user_id) {
+      return { ok: false, error: 'אין הרשאה לפרסם בשם משתמש אחר.' };
+    }
+
+    if (!input.session_id) {
+      const { data: profile } = await supabase.from('users').select('role').eq('id', authUser.id).maybeSingle();
+      if (profile?.role !== 'trainer') {
+        return { ok: false, error: 'רק מאמן/ת יכולים לפרסם ללא אימון משויך.' };
       }
+    }
 
-      if (!input.session_id) {
-        const { data: profile } = await supabase.from('users').select('role').eq('id', authUser.id).maybeSingle();
-        if (profile?.role !== 'trainer') {
-          return { ok: false, error: 'רק מאמן/ת יכולים לפרסם ללא אימון משויך.' };
-        }
-      }
-
-      const extension = MIME_EXTENSIONS[mimeType] ?? 'bin';
+    if (dataUrlMatch && bytes) {
+      const extension = MIME_EXTENSIONS[mimeType!] ?? 'bin';
       const path = `${input.user_id}/${input.session_id ?? 'general'}/${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 8)}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
         .from(MEDIA_BUCKET)
-        .upload(path, bytes, { contentType: mimeType, upsert: false });
+        .upload(path, bytes, { contentType: mimeType!, upsert: false });
       if (uploadError) return { ok: false, error: 'העלאת הקובץ נכשלה, נסו שוב.' };
 
       imageUrl = supabase.storage.from(MEDIA_BUCKET).getPublicUrl(path).data.publicUrl;
@@ -158,7 +168,7 @@ export async function uploadSessionMedia(
   const created = await insertMedia({
     ...input,
     image_url: imageUrl,
-    mime_type: isImage ? null : mimeType,
+    mime_type: imageUrl && !isImage ? mimeType : null,
   });
   revalidatePath('/participant');
   revalidatePath('/trainer');
@@ -297,6 +307,11 @@ export async function toggleMediaLike(
 
 const MAX_COMMENT_LENGTH = 500;
 
+// A mention the client inserted from the @-autocomplete: @[Display Name](user-uuid).
+// Parsed back out here to resolve who gets notified — never trusted at face
+// value, the ids are re-validated against real cohort members below.
+const MENTION_PATTERN = /@\[[^\]]+\]\(([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/gi;
+
 export async function addMediaComment(
   mediaId: string,
   userId: string,
@@ -309,8 +324,85 @@ export async function addMediaComment(
   }
 
   const comment = await insertComment(mediaId, userId, text);
+
+  const mentionedIds = [...text.matchAll(MENTION_PATTERN)].map((match) => match[1]);
+  if (mentionedIds.length > 0) {
+    const validUsers = await getUsersByIds([...new Set(mentionedIds)]);
+    if (validUsers.length > 0) {
+      await insertMentionNotifications(
+        userId,
+        mediaId,
+        comment.id,
+        validUsers.map((user) => user.id),
+      );
+    }
+  }
+
   revalidatePath('/feed');
   return { ok: true, data: comment };
+}
+
+const MAX_CAPTION_LENGTH = 500;
+
+/** Only the post's own author may edit its caption. */
+export async function updateMediaPost(
+  mediaId: string,
+  userId: string,
+  caption: string,
+): Promise<ActionResult<SessionMedia>> {
+  if (!mediaId || !userId) return { ok: false, error: 'חסר פוסט או משתמש.' };
+  const trimmed = caption.trim();
+  if (trimmed.length > MAX_CAPTION_LENGTH) {
+    return { ok: false, error: `הכיתוב מוגבל ל-${MAX_CAPTION_LENGTH} תווים.` };
+  }
+
+  const owner = await getMediaOwner(mediaId);
+  if (!owner) return { ok: false, error: 'הפוסט לא נמצא.' };
+  if (owner.user_id !== userId) return { ok: false, error: 'ניתן לערוך רק פוסטים שפרסמתם.' };
+  if (!owner.session_id && !trimmed) {
+    return { ok: false, error: 'הודעה כללית חייבת לכלול טקסט.' };
+  }
+
+  if (supabaseConfigured) {
+    const supabase = await createClient();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    if (!authUser || authUser.id !== userId) {
+      return { ok: false, error: 'אין הרשאה לערוך פוסט זה.' };
+    }
+  }
+
+  const updated = await updateMediaCaption(mediaId, trimmed || null);
+  revalidatePath('/feed');
+  revalidatePath('/participant');
+  revalidatePath('/trainer');
+  return { ok: true, data: updated };
+}
+
+/** Only the post's own author may delete it. */
+export async function deleteMediaPost(mediaId: string, userId: string): Promise<ActionResult<null>> {
+  if (!mediaId || !userId) return { ok: false, error: 'חסר פוסט או משתמש.' };
+
+  const owner = await getMediaOwner(mediaId);
+  if (!owner) return { ok: false, error: 'הפוסט לא נמצא.' };
+  if (owner.user_id !== userId) return { ok: false, error: 'ניתן למחוק רק פוסטים שפרסמתם.' };
+
+  if (supabaseConfigured) {
+    const supabase = await createClient();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    if (!authUser || authUser.id !== userId) {
+      return { ok: false, error: 'אין הרשאה למחוק פוסט זה.' };
+    }
+  }
+
+  await deleteMedia(mediaId);
+  revalidatePath('/feed');
+  revalidatePath('/participant');
+  revalidatePath('/trainer');
+  return { ok: true, data: null };
 }
 
 /* ------------------------------------------------- strength / points */

@@ -37,6 +37,7 @@ import type {
   SessionPlanInput,
   SessionTarget,
   SessionTrack,
+  NotificationItem,
   RunningEntryInput,
   RunningLog,
   StrengthEntryInput,
@@ -210,6 +211,15 @@ export async function getUsers(): Promise<User[]> {
   return data.map(mapUser);
 }
 
+/** Validates a set of ids against real cohort members, e.g. before notifying a @mention. */
+export async function getUsersByIds(ids: string[]): Promise<User[]> {
+  if (ids.length === 0) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase.from('users').select('*').in('id', ids);
+  if (error) throw error;
+  return data.map(mapUser);
+}
+
 export async function getParticipants(group?: GroupId | 'all'): Promise<Participant[]> {
   const supabase = await createClient();
   let query = supabase.from('users').select('*').eq('role', 'participant');
@@ -295,7 +305,9 @@ export async function getMedia(filters?: {
   group?: GroupId | 'all';
 }): Promise<SessionMedia[]> {
   const supabase = await createClient();
-  let query = supabase.from('session_media').select('*');
+  // Text-only posts (no photo or file) belong to the feed, not the photo/file
+  // gallery, so they're excluded here at the source.
+  let query = supabase.from('session_media').select('*').not('image_url', 'is', null);
   if (filters?.userId) query = query.eq('user_id', filters.userId);
   if (filters?.sessionId) query = query.eq('session_id', filters.sessionId);
   const { data, error } = await query.order('uploaded_at', { ascending: false });
@@ -419,7 +431,7 @@ export async function insertMedia(input: MediaUploadInput): Promise<SessionMedia
     .insert({
       session_id: input.session_id ?? null,
       user_id: input.user_id,
-      image_url: input.image_url,
+      image_url: input.image_url ?? null,
       caption: input.caption?.trim() ? input.caption.trim() : null,
       tags: input.tags ?? [],
       mime_type: input.mime_type ?? null,
@@ -439,6 +451,47 @@ export async function insertMedia(input: MediaUploadInput): Promise<SessionMedia
     file_name: data.file_name,
     uploaded_at: data.uploaded_at,
   };
+}
+
+/** Owner and session, to check permission and invariants before an edit or delete. */
+export async function getMediaOwner(
+  mediaId: string,
+): Promise<{ user_id: string; session_id: string | null } | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from('session_media')
+    .select('user_id, session_id')
+    .eq('id', mediaId)
+    .maybeSingle();
+  return data ?? null;
+}
+
+export async function updateMediaCaption(mediaId: string, caption: string | null): Promise<SessionMedia> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('session_media')
+    .update({ caption })
+    .eq('id', mediaId)
+    .select()
+    .single();
+  if (error) throw error;
+  return {
+    id: data.id,
+    session_id: data.session_id,
+    user_id: data.user_id,
+    image_url: data.image_url,
+    caption: data.caption,
+    tags: data.tags ?? [],
+    mime_type: data.mime_type,
+    file_name: data.file_name,
+    uploaded_at: data.uploaded_at,
+  };
+}
+
+export async function deleteMedia(mediaId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.from('session_media').delete().eq('id', mediaId);
+  if (error) throw error;
 }
 
 export async function insertSession(input: SessionPlanInput): Promise<TrainingSession> {
@@ -752,6 +805,91 @@ export async function insertComment(
     body: data.body,
     created_at: data.created_at,
   };
+}
+
+/* ----------------------------------------------------- mailbox / mentions */
+
+/** Notification rows for @mentions found in a just-posted comment. */
+export async function insertMentionNotifications(
+  actorId: string,
+  mediaId: string,
+  commentId: string,
+  recipientIds: string[],
+): Promise<void> {
+  const uniqueRecipients = [...new Set(recipientIds)].filter((id) => id !== actorId);
+  if (uniqueRecipients.length === 0) return;
+  const supabase = await createClient();
+  const { error } = await supabase.from('notifications').insert(
+    uniqueRecipients.map((recipientId) => ({
+      recipient_id: recipientId,
+      actor_id: actorId,
+      media_id: mediaId,
+      comment_id: commentId,
+    })),
+  );
+  if (error) throw error;
+}
+
+export async function getUnreadNotificationCount(userId: string): Promise<number> {
+  const supabase = await createClient();
+  const { count, error } = await supabase
+    .from('notifications')
+    .select('*', { count: 'exact', head: true })
+    .eq('recipient_id', userId)
+    .is('read_at', null);
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** The viewer's mailbox, newest first, with the mentioning user and the post's context resolved. */
+export async function getNotifications(userId: string): Promise<NotificationItem[]> {
+  const supabase = await createClient();
+  const { data: rows, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('recipient_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  if (!rows || rows.length === 0) return [];
+
+  const actorIds = [...new Set(rows.map((row) => row.actor_id))];
+  const mediaIds = [...new Set(rows.map((row) => row.media_id))];
+  const commentIds = [...new Set(rows.map((row) => row.comment_id).filter((id): id is string => Boolean(id)))];
+
+  const [actors, { data: mediaRows }, { data: commentRows }] = await Promise.all([
+    getUsersByIds(actorIds),
+    supabase.from('session_media').select('id, caption').in('id', mediaIds),
+    commentIds.length > 0
+      ? supabase.from('media_comments').select('id, body').in('id', commentIds)
+      : Promise.resolve({ data: [] as { id: string; body: string }[] }),
+  ]);
+
+  const actorById = new Map(actors.map((actor) => [actor.id, actor]));
+  const captionByMediaId = new Map((mediaRows ?? []).map((row: any) => [row.id, row.caption as string | null]));
+  const bodyByCommentId = new Map((commentRows ?? []).map((row: any) => [row.id, row.body as string]));
+
+  return rows
+    .map((row) => ({
+      id: row.id,
+      actor: actorById.get(row.actor_id),
+      media_id: row.media_id,
+      mediaCaption: captionByMediaId.get(row.media_id) ?? null,
+      commentBody: row.comment_id ? (bodyByCommentId.get(row.comment_id) ?? null) : null,
+      read: Boolean(row.read_at),
+      created_at: row.created_at,
+    }))
+    .filter((item): item is NotificationItem => Boolean(item.actor));
+}
+
+export async function markAllNotificationsRead(userId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read_at: new Date().toISOString() })
+    .eq('recipient_id', userId)
+    .is('read_at', null);
+  if (error) throw error;
 }
 
 /* ---------------------------------------------------- training status */

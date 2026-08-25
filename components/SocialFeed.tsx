@@ -9,14 +9,23 @@ import {
   Loader2,
   MessageCircle,
   Paperclip,
+  Pencil,
   Send,
   Sparkles,
+  Trash2,
   X,
 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useOptimistic, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { addMediaComment, toggleMediaLike, uploadSessionMedia } from '@/app/actions';
+import {
+  addMediaComment,
+  deleteMediaPost,
+  toggleMediaLike,
+  updateMediaPost,
+  uploadSessionMedia,
+} from '@/app/actions';
 import { Avatar, Badge, Card, EmptyState, GroupBadge } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 import { compactCount, formatRelativeTime } from '@/lib/format';
@@ -40,6 +49,43 @@ interface SocialFeedProps {
   viewer: User;
   /** Sessions the viewer can tag a new photo with. */
   sessions: TrainingSession[];
+  /** Everyone in the cohort, for the @mention autocomplete in comments. */
+  users: User[];
+}
+
+/* --------------------------------------------------------- mentions */
+
+// A mention the composer inserts: @[Display Name](user-uuid). Rendered as a
+// styled "@Name" chip; the server parses the same pattern to resolve who to
+// notify.
+const MENTION_RENDER_PATTERN = /@\[([^\]]+)\]\([0-9a-fA-F-]{36}\)/g;
+
+function renderCommentBody(body: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  let lastIndex = 0;
+  let key = 0;
+  for (const match of body.matchAll(MENTION_RENDER_PATTERN)) {
+    const index = match.index ?? 0;
+    if (index > lastIndex) parts.push(body.slice(lastIndex, index));
+    parts.push(
+      <span key={key++} className="font-medium text-accent">
+        @{match[1]}
+      </span>,
+    );
+    lastIndex = index + match[0].length;
+  }
+  if (lastIndex < body.length) parts.push(body.slice(lastIndex));
+  return parts;
+}
+
+/** Turns tracked @mentions back into `@[Name](id)` tokens for storage, longest names first. */
+function encodeMentions(raw: string, mentions: Array<{ id: string; name: string }>): string {
+  let result = raw;
+  const byLength = [...mentions].sort((a, b) => b.name.length - a.name.length);
+  for (const mention of byLength) {
+    result = result.split(`@${mention.name}`).join(`@[${mention.name}](${mention.id})`);
+  }
+  return result;
 }
 
 /* ------------------------------------------------------------- image */
@@ -76,7 +122,7 @@ function PostImage({ src, alt }: { src: string; alt: string }) {
 function PostFile({ media }: { media: SessionMedia }) {
   return (
     <a
-      href={media.image_url}
+      href={media.image_url ?? undefined}
       target="_blank"
       rel="noreferrer"
       className="flex items-center gap-3 bg-elevated px-4 py-4 transition-colors hover:bg-elevated/70"
@@ -92,26 +138,71 @@ function PostFile({ media }: { media: SessionMedia }) {
   );
 }
 
-/** Picks a photo or a file card, whichever this post actually is. */
+/** Picks a photo or a file card, whichever this post actually is — or nothing for a text-only post. */
 function PostMedia({ media, alt }: { media: SessionMedia; alt: string }) {
+  if (!media.image_url) return null;
   if (media.mime_type) return <PostFile media={media} />;
   return <PostImage src={media.image_url} alt={alt} />;
 }
 
 /* -------------------------------------------------------------- post */
 
-function PostCard({ post, viewer }: { post: FeedPost; viewer: User }) {
+function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users: User[] }) {
   const router = useRouter();
   const [showAllComments, setShowAllComments] = useState(false);
   const [draft, setDraft] = useState('');
+  const [mentions, setMentions] = useState<Array<{ id: string; name: string }>>([]);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const commentInputRef = useRef<HTMLInputElement>(null);
   const [comments, setComments] = useState(post.comments);
   const [isPending, startTransition] = useTransition();
+
+  const isAuthor = post.author.id === viewer.id;
+  const [caption, setCaption] = useState(post.media.caption ?? '');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState(caption);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isDeleted, setIsDeleted] = useState(false);
+  const [isSaving, startSaveTransition] = useTransition();
+  const [isDeleting, startDeleteTransition] = useTransition();
 
   // Optimistic like: the heart flips instantly, the action reconciles after.
   const [likeState, setLikeState] = useOptimistic(
     { likes: post.likes, likedByMe: post.likedByMe },
     (_current, next: { likes: number; likedByMe: boolean }) => next,
   );
+
+  const startEdit = () => {
+    setEditDraft(caption);
+    setEditError(null);
+    setIsEditing(true);
+  };
+
+  const saveEdit = () => {
+    startSaveTransition(async () => {
+      const result = await updateMediaPost(post.media.id, viewer.id, editDraft);
+      if (!result.ok) {
+        setEditError(result.error);
+        return;
+      }
+      setCaption(result.data.caption ?? '');
+      setIsEditing(false);
+      router.refresh();
+    });
+  };
+
+  const onDelete = () => {
+    if (!window.confirm('למחוק את הפוסט? הפעולה לא ניתנת לביטול.')) return;
+    startDeleteTransition(async () => {
+      const result = await deleteMediaPost(post.media.id, viewer.id);
+      if (!result.ok) {
+        window.alert(result.error);
+        return;
+      }
+      setIsDeleted(true);
+      router.refresh();
+    });
+  };
 
   const onLike = () => {
     startTransition(async () => {
@@ -124,12 +215,50 @@ function PostCard({ post, viewer }: { post: FeedPost; viewer: User }) {
     });
   };
 
+  const mentionSuggestions =
+    mentionQuery !== null
+      ? users
+          .filter((user) => user.id !== viewer.id)
+          .filter((user) => user.name.toLowerCase().includes(mentionQuery.toLowerCase()))
+          .slice(0, 5)
+      : [];
+
+  const onDraftChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    const cursor = event.target.selectionStart ?? value.length;
+    setDraft(value);
+    const match = /@([^\s@]{0,30})$/.exec(value.slice(0, cursor));
+    setMentionQuery(match ? match[1] : null);
+  };
+
+  const insertMention = (user: User) => {
+    const input = commentInputRef.current;
+    const cursor = input?.selectionStart ?? draft.length;
+    const beforeCursor = draft.slice(0, cursor);
+    const atIndex = beforeCursor.lastIndexOf('@');
+    if (atIndex === -1) return;
+    const before = draft.slice(0, atIndex);
+    const after = draft.slice(cursor);
+    const insertion = `@${user.name} `;
+    setDraft(before + insertion + after);
+    setMentions((current) => (current.some((m) => m.id === user.id) ? current : [...current, { id: user.id, name: user.name }]));
+    setMentionQuery(null);
+    requestAnimationFrame(() => {
+      const pos = before.length + insertion.length;
+      input?.focus();
+      input?.setSelectionRange(pos, pos);
+    });
+  };
+
   const onComment = () => {
     const body = draft.trim();
     if (!body) return;
+    const finalBody = encodeMentions(body, mentions);
     setDraft('');
+    setMentions([]);
+    setMentionQuery(null);
     startTransition(async () => {
-      const result = await addMediaComment(post.media.id, viewer.id, body);
+      const result = await addMediaComment(post.media.id, viewer.id, finalBody);
       if (result.ok) {
         setComments((current) => [...current, { comment: result.data, author: viewer }]);
         router.refresh();
@@ -137,8 +266,46 @@ function PostCard({ post, viewer }: { post: FeedPost; viewer: User }) {
     });
   };
 
+  if (isDeleted) return null;
+
   const visibleComments = showAllComments ? comments : comments.slice(-2);
   const isStaffPost = post.author.role === 'trainer';
+  const hasMedia = Boolean(post.media.image_url);
+
+  const captionArea = isEditing ? (
+    <div className="space-y-1.5">
+      <textarea
+        className="input min-h-[5rem] resize-y py-2 leading-relaxed"
+        value={editDraft}
+        onChange={(event) => setEditDraft(event.target.value)}
+        placeholder="כיתוב"
+        aria-label="עריכת הכיתוב"
+        autoFocus
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setIsEditing(false);
+        }}
+      />
+      {editError ? (
+        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+          {editError}
+        </p>
+      ) : null}
+      <div className="flex justify-end gap-2">
+        <button type="button" className="btn-secondary px-3 py-1.5 text-sm" onClick={() => setIsEditing(false)}>
+          ביטול
+        </button>
+        <button type="button" className="btn-primary px-3 py-1.5 text-sm" onClick={saveEdit} disabled={isSaving}>
+          {isSaving ? <Loader2 aria-hidden className="h-4 w-4 animate-spin" /> : 'שמירה'}
+        </button>
+      </div>
+    </div>
+  ) : caption ? (
+    <p className={cn('whitespace-pre-wrap text-sm text-ink', !hasMedia && 'text-[15px] leading-relaxed')}>
+      {hasMedia ? <span className="font-semibold">{post.author.name.split(' ')[0]}</span> : null}
+      {hasMedia ? ' ' : null}
+      {caption}
+    </p>
+  ) : null;
 
   return (
     <Card
@@ -176,7 +343,35 @@ function PostCard({ post, viewer }: { post: FeedPost; viewer: User }) {
         ) : post.author.team ? (
           <GroupBadge groupId={post.author.team} short />
         ) : null}
+        {isAuthor ? (
+          <div className="flex shrink-0 items-center gap-0.5">
+            <button
+              type="button"
+              onClick={startEdit}
+              aria-label="עריכת הפוסט"
+              className="btn-ghost h-8 w-8 p-0 text-muted hover:text-ink"
+            >
+              <Pencil aria-hidden className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={isDeleting}
+              aria-label="מחיקת הפוסט"
+              className="btn-ghost h-8 w-8 p-0 text-muted hover:text-rose-500 disabled:opacity-40"
+            >
+              {isDeleting ? (
+                <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 aria-hidden className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+        ) : null}
       </div>
+
+      {/* text-only post: caption reads as the post body, right under the header */}
+      {!hasMedia ? <div className="px-4 pb-1 pt-1">{captionArea}</div> : null}
 
       <PostMedia media={post.media} alt={post.media.caption ?? `תמונת אימון של ${post.author.name}`} />
 
@@ -216,14 +411,9 @@ function PostCard({ post, viewer }: { post: FeedPost; viewer: User }) {
         </time>
       </div>
 
-      {/* caption + tags */}
-      <div className="space-y-1 px-4 pb-2 pt-1">
-        {post.media.caption ? (
-          <p className="text-sm text-ink">
-            <span className="font-semibold">{post.author.name.split(' ')[0]}</span>{' '}
-            {post.media.caption}
-          </p>
-        ) : null}
+      {/* caption + tags (photo/file posts only — text posts render this above) */}
+      <div className="space-y-1.5 px-4 pb-2 pt-1">
+        {hasMedia ? captionArea : null}
         {post.media.tags.length > 0 ? (
           <p className="flex flex-wrap gap-1">
             {post.media.tags.map((tag) => (
@@ -252,7 +442,7 @@ function PostCard({ post, viewer }: { post: FeedPost; viewer: User }) {
             {visibleComments.map(({ comment, author }) => (
               <li key={comment.id} className="text-sm">
                 <span className="font-semibold text-ink">{author.name.split(' ')[0]}</span>{' '}
-                <span className="text-ink/90">{comment.body}</span>
+                <span className="text-ink/90">{renderCommentBody(comment.body)}</span>
                 {author.role === 'trainer' ? (
                   <Badge tone="accent" className="ms-1.5 align-middle">
                     מאמנת
@@ -265,18 +455,40 @@ function PostCard({ post, viewer }: { post: FeedPost; viewer: User }) {
       ) : null}
 
       {/* add a comment */}
-      <div className="flex items-center gap-2 border-t border-line px-3 py-2">
+      <div className="relative flex items-center gap-2 border-t border-line px-3 py-2">
+        {mentionSuggestions.length > 0 ? (
+          <ul className="absolute bottom-full start-3 z-10 mb-1 w-56 overflow-hidden rounded-xl border border-line bg-surface shadow-lg">
+            {mentionSuggestions.map((user) => (
+              <li key={user.id}>
+                <button
+                  type="button"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    insertMention(user);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm text-ink hover:bg-elevated"
+                >
+                  <Avatar name={user.name} groupId={user.team} size="sm" />
+                  {user.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <Avatar name={viewer.name} groupId={viewer.team} size="sm" />
         <input
+          ref={commentInputRef}
           id={`comment-${post.media.id}`}
           className="input border-0 bg-transparent px-1 py-2 focus:ring-0"
-          placeholder="הוספת תגובה…"
+          placeholder="הוספת תגובה… (@ כדי לתייג)"
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={onDraftChange}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' && mentionSuggestions.length === 0) {
               event.preventDefault();
               onComment();
+            } else if (event.key === 'Escape') {
+              setMentionQuery(null);
             }
           }}
           aria-label={`תגובה לתמונה של ${post.author.name}`}
@@ -316,7 +528,15 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
     setIsImage(true);
     setCaption('');
     setNoSession(false);
+    setError(null);
     setOpen(false);
+    if (fileRef.current) fileRef.current.value = '';
+  };
+
+  const removeFile = () => {
+    setDataUrl(null);
+    setFileName(null);
+    setIsImage(true);
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -337,7 +557,10 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
   };
 
   const publish = () => {
-    if (!dataUrl) return;
+    if (!dataUrl && !caption.trim()) {
+      setError('כתבו טקסט או צרפו קובץ.');
+      return;
+    }
     if (!noSession && !sessionId) return;
     if (noSession && !caption.trim()) {
       setError('הודעה כללית חייבת לכלול טקסט.');
@@ -369,62 +592,76 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
         capture="environment"
         className="sr-only"
         id="feed-photo"
-        onChange={(event) => {
-          pick(event.target.files?.[0]);
-          setOpen(true);
-        }}
+        onChange={(event) => pick(event.target.files?.[0])}
       />
 
-      {!open || !dataUrl ? (
-        <label
-          htmlFor="feed-photo"
-          className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-elevated"
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-elevated"
         >
           <Avatar name={viewer.name} groupId={viewer.team} />
           <span className="flex-1 text-sm text-muted">
-            {isTrainer ? 'שיתוף תמונה, קובץ או הודעה…' : 'שיתוף תמונה מהאימון…'}
+            {isTrainer ? 'שיתוף תמונה, קובץ או הודעה…' : 'שיתוף תמונה או הודעה מהאימון…'}
           </span>
           <span className="btn-primary px-3 py-2">
             <Camera aria-hidden className="h-4 w-4" />
             פרסום
           </span>
-        </label>
+        </button>
       ) : (
         <div className="space-y-3 p-4">
-          <div className="relative overflow-hidden rounded-xl border border-line">
-            {isImage ? (
-              // eslint-disable-next-line @next/next/no-img-element -- local data URL preview
-              <img src={dataUrl} alt="תצוגה מקדימה של התמונה שנבחרה" className="max-h-72 w-full object-cover" />
-            ) : (
-              <div className="flex items-center gap-3 bg-elevated px-4 py-4">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface text-accent">
-                  <Paperclip aria-hidden className="h-5 w-5" />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{fileName}</span>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={reset}
-              aria-label="ביטול הקובץ"
-              className="absolute end-2 top-2 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80"
-            >
-              <X aria-hidden className="h-4 w-4" />
-            </button>
-          </div>
+          {dataUrl ? (
+            <div className="relative overflow-hidden rounded-xl border border-line">
+              {isImage ? (
+                // eslint-disable-next-line @next/next/no-img-element -- local data URL preview
+                <img src={dataUrl} alt="תצוגה מקדימה של התמונה שנבחרה" className="max-h-72 w-full object-cover" />
+              ) : (
+                <div className="flex items-center gap-3 bg-elevated px-4 py-4">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface text-accent">
+                    <Paperclip aria-hidden className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{fileName}</span>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={removeFile}
+                aria-label="הסרת הקובץ"
+                className="absolute end-2 top-2 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80"
+              >
+                <X aria-hidden className="h-4 w-4" />
+              </button>
+            </div>
+          ) : null}
 
           <div className="space-y-1.5">
             <label htmlFor="feed-caption" className="text-sm font-medium text-ink">
-              כיתוב {noSession ? <span className="font-normal text-muted">(חובה להודעה כללית)</span> : null}
+              {dataUrl ? 'כיתוב' : 'מה ברצונכם לכתוב?'}{' '}
+              {noSession ? <span className="font-normal text-muted">(חובה להודעה כללית)</span> : null}
             </label>
-            <input
+            <textarea
               id="feed-caption"
-              className="input"
-              placeholder={noSession ? 'מה ברצונכם למסור?' : 'איך היה האימון?'}
+              className="input min-h-[6rem] resize-y py-2 leading-relaxed"
+              placeholder={
+                noSession ? 'מה ברצונכם למסור?' : dataUrl ? 'איך היה האימון?' : 'כתבו כאן טקסט, כולל שורות וסעיפים…'
+              }
               value={caption}
               onChange={(event) => setCaption(event.target.value)}
+              rows={dataUrl ? 2 : 6}
             />
           </div>
+
+          {!dataUrl ? (
+            <label
+              htmlFor="feed-photo"
+              className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-accent hover:underline"
+            >
+              <Paperclip aria-hidden className="h-4 w-4" />
+              צירוף תמונה או קובץ (אופציונלי)
+            </label>
+          ) : null}
 
           {isTrainer ? (
             <label className="flex items-center gap-1.5 text-sm text-ink">
@@ -486,8 +723,8 @@ function Composer({ viewer, sessions }: { viewer: User; sessions: TrainingSessio
 
 /* -------------------------------------------------------------- feed */
 
-/** Instagram-style feed: photos from every training, with likes and comments. */
-export default function SocialFeed({ posts, viewer, sessions }: SocialFeedProps) {
+/** Instagram-style feed: photos, files and text updates, with likes and comments. */
+export default function SocialFeed({ posts, viewer, sessions, users }: SocialFeedProps) {
   const [group, setGroup] = useState<GroupId | 'all'>('all');
 
   const filtered =
@@ -534,7 +771,7 @@ export default function SocialFeed({ posts, viewer, sessions }: SocialFeedProps)
           />
         </Card>
       ) : (
-        filtered.map((post) => <PostCard key={post.media.id} post={post} viewer={viewer} />)
+        filtered.map((post) => <PostCard key={post.media.id} post={post} viewer={viewer} users={users} />)
       )}
     </div>
   );
