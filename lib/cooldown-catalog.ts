@@ -4,6 +4,7 @@
  * score every 5 seconds as a rep), so cool-down rounds reuse the same
  * interval/points screen as everything else.
  */
+import { withRealGif } from './strength-catalog';
 import type {
   AnimationKey,
   CooldownCategoryId,
@@ -75,4 +76,9 @@ export const COOLDOWN_EXERCISES: StrengthExercise[] = [
   e('cool-back-1-cat', 'חתול-פרה סטטי', 'Static Cat-Cow', 'stretch_back', 1, 'cobra'),
   e('cool-back-2-knee-hug', 'חיבוק ברכיים לחזה', 'Knee-to-Chest Hug', 'stretch_back', 2, 'deadbug'),
   e('cool-back-3-spinal-twist', 'פיתול גב שכיבה', 'Supine Spinal Twist', 'stretch_back', 3, 'twist'),
-];
+
+  /* -------------------------------------- מתיחות צוואר (no dedicated catalogue yet — filed under upper body) */
+  e('cool-up-3-neck-front-back', 'מתיחת צוואר קדימה ואחורה', 'Front and Back Neck Stretch', 'stretch_upper', 1, 'ytw'),
+  e('cool-up-3-neck-side', 'מתיחת צוואר לצדדים', 'Side Neck Stretch', 'stretch_upper', 1, 'ytw'),
+  e('cool-up-3-neck-rotation', 'סיבוב צוואר איטי', 'Slow Neck Rotation', 'stretch_upper', 2, 'ytw'),
+].map(withRealGif);

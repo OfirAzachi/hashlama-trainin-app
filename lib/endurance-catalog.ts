@@ -1,3 +1,4 @@
+import { withRealGif } from './strength-catalog';
 import type {
   AnimationKey,
   EnduranceCategoryId,
@@ -63,4 +64,4 @@ export const ENDURANCE_EXERCISES: StrengthExercise[] = [
   e('cardio-4-tuck-jumps', 'Tuck Jumps (קפיצות ברכיים לחזה)', 'Tuck Jumps', 'cardio', 4, 'jumpsquat', 'seconds'),
   e('cardio-4-squat-thrusts', 'Squat Thrusts מתפרצים', 'Explosive Squat Thrusts', 'cardio', 4, 'burpee', 'seconds'),
   e('cardio-4-bear-crawl-fast', 'Bear Crawl מהיר קדימה-אחורה', 'Fast Bear Crawl', 'cardio', 4, 'crawl', 'meters'),
-];
+].map(withRealGif);

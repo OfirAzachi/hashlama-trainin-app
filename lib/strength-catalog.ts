@@ -149,6 +149,75 @@ const e = (
   gif_url: null,
 });
 
+/**
+ * Real animated GIFs, matched by hand against ExerciseDB's bodyweight
+ * catalogue (see app/api/exercise-gif/[id]/route.ts for how the id resolves
+ * to an actual GIF). Exercises without a confident match keep the built-in
+ * stick-figure illustration — a wrong demo is worse than a generic one.
+ */
+export const REAL_GIF_IDS: Record<string, string> = {
+  // push
+  'push-1-wall-pushup': '0659',
+  'push-2-incline-pushup': '0493',
+  'push-2-knee-pushup': '0662',
+  'push-2-bench-dip-bent-knee': '0129',
+  'push-3-full-pushup': '0662',
+  'push-3-decline-pushup': '0279',
+  'push-3-diamond-pushup': '0283',
+  'push-3-parallel-dip': '0251',
+  'push-4-handstand-wall': '0471',
+  'push-4-one-arm-pushup': '0666',
+  'push-4-ring-dip': '0677',
+  // back
+  'back-2-inverted-row-shallow': '0497',
+  'back-3-pullup': '0652',
+  'back-3-chinup': '0253',
+  'back-3-inverted-row': '0499',
+  'back-4-muscleup': '0631',
+  'back-4-one-arm-pullup': '0638',
+  // lower
+  'lower-2-calf-raise': '1373',
+  'lower-1-short-glute-bridge': '0130',
+  'lower-2-full-glute-bridge': '0130',
+  'lower-3-jump-squat': '0514',
+  'lower-3-walking-lunge': '1460',
+  // core
+  'core-1-arms-only-deadbug': '0276',
+  'core-2-deadbug-full': '0276',
+  'core-2-crunch': '0274',
+  'core-3-reverse-crunch': '0872',
+  'core-3-bicycle-crunch': '0003',
+  'core-3-mountain-climber': '0630',
+  'core-1-seated-knee-tuck': '0689',
+  'core-3-hanging-knee-raise': '0472',
+  // cardio (endurance catalogue)
+  'cardio-1-slow-knee-raise': '3636',
+  'cardio-3-high-knees': '3636',
+  'cardio-3-fast-mountain-climber': '0630',
+  'cardio-4-burpees': '1160',
+  'cardio-3-sprawls': '0501',
+  'cardio-4-squat-thrusts': '0501',
+  'cardio-4-bear-crawl-fast': '3360',
+  'cardio-3-rope-single': '2612',
+  'cardio-4-rope-double': '2612',
+  'cardio-2-skaters-no-hop': '3361',
+  'cardio-3-wide-skaters': '3361',
+  // warm-up
+  'warm-pulse-2-high-knees': '3636',
+  'warm-pulse-3-skater': '3361',
+  // cool-down
+  'cool-up-1-triceps': '0643',
+  'cool-up-3-neck-front-back': '0462',
+  'cool-up-3-neck-side': '0713',
+  'cool-up-3-neck-rotation': '0716',
+};
+
+/** Wires in a real GIF (via the proxy route) for any exercise with a matched id. */
+export function withRealGif(exercise: StrengthExercise): StrengthExercise {
+  const gifId = REAL_GIF_IDS[exercise.id];
+  return gifId ? { ...exercise, gif_url: `/api/exercise-gif/${gifId}` } : exercise;
+}
+
 export const STRENGTH_EXERCISES: StrengthExercise[] = [
   /* =========================== 1. חזה, כתפיים ויד אחורית (Push) =========================== */
   // רמה 1 — בסיסי מאוד
@@ -253,7 +322,7 @@ export const STRENGTH_EXERCISES: StrengthExercise[] = [
   e('core-4-lsit', 'L-Sit מלא על מקבילים או קרקע', 'Full L-Sit', 'core', 4, 'legraise', 'seconds'),
   e('core-4-ab-wheel', 'פלאנק עם גלגלת בטן / פלאנק ארוך', 'Ab Wheel / Extended Plank', 'core', 4, 'plank', 'seconds'),
   e('core-4-vup', 'V-Ups מלאים', 'Full V-Ups', 'core', 4, 'crunch'),
-];
+].map(withRealGif);
 
 export const EXERCISES_BY_ID: Record<string, StrengthExercise> = Object.fromEntries(
   STRENGTH_EXERCISES.map((exercise) => [exercise.id, exercise]),

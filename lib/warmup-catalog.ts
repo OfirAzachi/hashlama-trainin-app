@@ -4,6 +4,7 @@
  * (points = reps x level), used mainly so warm-up rounds fit the same
  * interval/points screen as everything else.
  */
+import { withRealGif } from './strength-catalog';
 import type {
   AnimationKey,
   StrengthCategory,
@@ -67,4 +68,4 @@ export const WARMUP_EXERCISES: StrengthExercise[] = [
   e('warm-pulse-2-jumping-jack', 'ג׳אמפינג ג׳ק קל', 'Easy Jumping Jacks', 'pulse_raiser', 2, 'jumpingjack'),
   e('warm-pulse-2-high-knees', 'ברכיים גבוהות בקצב בינוני', 'High Knees', 'pulse_raiser', 2, 'highknee'),
   e('warm-pulse-3-skater', 'קפיצות סקייטר קלות', 'Light Skater Hops', 'pulse_raiser', 3, 'skater'),
-];
+].map(withRealGif);
