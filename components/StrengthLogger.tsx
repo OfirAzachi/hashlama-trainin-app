@@ -671,10 +671,13 @@ export default function StrengthLogger({
       )}
 
       {error ? (
-        <p role="alert" className="flex items-center gap-2 text-sm text-rose-600 dark:text-rose-400">
-          <TriangleAlert aria-hidden className="h-4 w-4" />
+        <div
+          role="alert"
+          className="fixed inset-x-3 bottom-32 z-30 mx-auto flex max-w-3xl items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 shadow-lg dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300 sm:bottom-20"
+        >
+          <TriangleAlert aria-hidden className="h-5 w-5 shrink-0" />
           {error}
-        </p>
+        </div>
       ) : null}
 
       {saved !== null ? (
