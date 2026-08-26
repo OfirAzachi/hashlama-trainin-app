@@ -23,8 +23,8 @@ begin
   end loop;
 end $$;
 
-alter table public.roster add constraint roster_personal_number_format
-  check (personal_number ~ '^[א-ת]+[0-9]+$');
-
 update public.roster
 set personal_number = first_name || left(personal_number, 1) || right(personal_number, 2);
+
+alter table public.roster add constraint roster_personal_number_format
+  check (personal_number ~ '^[א-ת]+[0-9]+$');

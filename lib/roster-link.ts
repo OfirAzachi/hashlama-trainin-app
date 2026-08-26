@@ -25,7 +25,7 @@ export async function linkRosterToUser(
     return { ok: false, error: 'הזינו קוד כניסה.' };
   }
   if (!/^[א-ת]+[0-9]+$/.test(trimmed)) {
-    return { ok: false, error: 'קוד כניסה הוא שם פרטי ואחריו ספרות, בלי רווח (לדוגמה: אופיר912).' };
+    return { ok: false, error: 'קוד כניסה הוא שם פרטי ואחריו ספרות, בלי רווח (לדוגמה: אופיר12).' };
   }
 
   const { data: rosterRow, error: rosterError } = await service

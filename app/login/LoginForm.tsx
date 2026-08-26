@@ -141,7 +141,7 @@ export default function LoginForm({ next, initialError }: { next: string; initia
                 onChange={(event) => setSignupPersonalNumber(event.target.value)}
                 className="input"
                 autoComplete="off"
-                placeholder="לדוגמה: אופיר912"
+                placeholder="לדוגמה: אופיר12"
               />
               <p className="text-xs text-muted">
                 שם, קבוצה ותוצאות הבוחן מולאים אוטומטית ממאגר המאמן/ת. הקוד הוא השם הפרטי שלכם ואחריו הספרות שקיבלתם

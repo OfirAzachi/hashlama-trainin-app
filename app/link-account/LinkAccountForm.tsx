@@ -42,7 +42,7 @@ export default function LinkAccountForm() {
             onChange={(event) => setValue(event.target.value)}
             className="input"
             autoComplete="off"
-            placeholder="לדוגמה: אופיר912"
+            placeholder="לדוגמה: אופיר12"
           />
         </div>
 
