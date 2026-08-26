@@ -6,9 +6,9 @@
  *   Static holds: every 5 seconds counts as one rep.
  *   Bear crawl:   every 2 metres counts as one rep.
  *
- * Four movement categories (push / pull / legs / core),
- * each with four difficulty tiers — בסיסי מאוד (intro), מתחיל (beginner),
- * בינוני (intermediate) and מתקדם (pro) — mapped straight to levels 1-4.
+ * Four movement categories (push / pull / legs / core), each with three
+ * difficulty tiers — מתחיל (beginner), בינוני (intermediate) and מתקדם
+ * (advanced) — mapped straight to levels 1-3.
  *
  * Every exercise carries an `animation` key rendered by
  * `components/ExerciseAnimation.tsx`, plus an optional `gif_url` so a real
@@ -29,7 +29,7 @@ export type CategoryId =
   | EnduranceCategoryId
   | WarmupCategoryId
   | CooldownCategoryId;
-export type StrengthLevel = 1 | 2 | 3 | 4;
+export type StrengthLevel = 1 | 2 | 3;
 /** Raw unit the participant records for this exercise. */
 export type StrengthUnit = 'reps' | 'seconds' | 'meters';
 
@@ -53,6 +53,8 @@ export interface StrengthExercise {
   /** Raw units that make one scoring rep: 1 rep, 5 seconds, or 2 metres. */
   unitsPerRep: number;
   animation: AnimationKey;
+  /** How to perform the movement — shown alongside the demo. Null for catalogues not yet written. */
+  instructions: string | null;
   /** Optional real GIF/video; the built-in animation is used when null. */
   gif_url: string | null;
 }
@@ -122,10 +124,9 @@ export const CATEGORIES_BY_ID: Record<StrengthCategoryId, StrengthCategory> = Ob
 
 /** Level names shown next to the points multiplier. */
 export const LEVEL_LABELS: Record<StrengthLevel, { name: string; nameEn: string }> = {
-  1: { name: 'רמה 1 — בסיסי מאוד', nameEn: 'Level 1 — Intro / very easy' },
-  2: { name: 'רמה 2 — מתחיל', nameEn: 'Level 2 — Beginner' },
-  3: { name: 'רמה 3 — בינוני', nameEn: 'Level 3 — Intermediate' },
-  4: { name: 'רמה 4 — מתקדם', nameEn: 'Level 4 — Pro' },
+  1: { name: 'רמה 1 — מתחיל', nameEn: 'Level 1 — Beginner' },
+  2: { name: 'רמה 2 — בינוני', nameEn: 'Level 2 — Intermediate' },
+  3: { name: 'רמה 3 — מתקדם', nameEn: 'Level 3 — Advanced' },
 };
 
 const e = (
@@ -135,6 +136,7 @@ const e = (
   category: StrengthCategoryId,
   level: StrengthLevel,
   animation: AnimationKey,
+  instructions: string,
   unit: StrengthUnit = 'reps',
 ): StrengthExercise => ({
   id,
@@ -146,75 +148,82 @@ const e = (
   unit,
   unitsPerRep: unit === 'seconds' ? 5 : unit === 'meters' ? 2 : 1,
   animation,
+  instructions,
   gif_url: null,
 });
 
 /**
- * Real animated GIFs, matched by hand against ExerciseDB's bodyweight
- * catalogue (see app/api/exercise-gif/[id]/route.ts for how the id resolves
- * to an actual GIF). Exercises without a confident match keep the built-in
+ * Real animated GIFs, matched against ExerciseDB's catalogue by numeric id
+ * (see app/api/exercise-gif/[id]/route.ts for how the id resolves to an
+ * actual GIF, fetched live through our own server — never bulk-downloaded
+ * or re-hosted). Exercises without a confident match keep the built-in
  * stick-figure illustration — a wrong demo is worse than a generic one.
  */
 export const REAL_GIF_IDS: Record<string, string> = {
   // push
-  'push-1-wall-pushup': '0659',
-  'push-1-isometric-press': '1297',
-  'push-2-incline-pushup': '0493',
-  'push-2-knee-pushup': '0662',
-  'push-2-bench-dip-bent-knee': '0129',
-  'push-2-pike-bent-knee': '3662',
-  'push-3-full-pushup': '0662',
+  'push-1-kneeling-pushup': '3211',
+  'push-1-incline-pushup': '0493',
+  'push-1-floor-tricep-dip': '0814',
+  'push-2-standard-pushup': '0662',
+  'push-2-diamond-pushup': '0283',
+  'push-2-pike-pushup': '3662',
   'push-3-decline-pushup': '0279',
-  'push-3-diamond-pushup': '0283',
-  'push-3-pike-full': '3662',
-  'push-3-parallel-dip': '0251',
-  'push-4-handstand-wall': '0471',
-  'push-4-one-arm-pushup': '0666',
-  'push-4-ring-dip': '0677',
+  'push-3-single-arm-pushup': '0725',
   // back
-  'back-2-inverted-row-shallow': '0497',
-  'back-2-scapular-retraction': '3021',
-  'back-3-pullup': '0652',
-  'back-3-chinup': '0253',
-  'back-3-inverted-row': '0499',
-  'back-3-wide-pullup': '1429',
-  'back-4-muscleup': '0631',
-  'back-4-one-arm-pullup': '0638',
-  'back-4-front-lever': '3295',
+  'back-1-back-extension': '0489',
+  'back-1-scapular-pullup': '0688',
+  'back-1-inverted-row-bent-knees': '2300',
+  'back-2-inverted-row': '0499',
+  'back-2-pullup': '0652',
+  'back-2-chinup': '1326',
+  'back-3-lpullup': '3418',
   // lower
-  'lower-2-static-lunge': '2368',
-  'lower-2-calf-raise': '1373',
-  'lower-1-short-glute-bridge': '0130',
-  'lower-2-full-glute-bridge': '0130',
-  'lower-3-jump-squat': '0514',
-  'lower-3-walking-lunge': '1460',
-  'lower-3-bulgarian-split-squat': '2368',
+  'lower-1-swimmer-kicks': '3433',
+  'lower-1-bodyweight-squat': '1685',
+  'lower-1-forward-lunge': '3470',
+  'lower-2-walking-lunge': '1460',
+  'lower-2-jump-squat': '0514',
+  'lower-3-pistol-squat': '1759',
   // core
-  'core-1-arms-only-deadbug': '0276',
-  'core-2-deadbug-full': '0276',
-  'core-2-crunch': '0274',
-  'core-3-reverse-crunch': '0872',
-  'core-3-bicycle-crunch': '0003',
-  'core-3-mountain-climber': '0630',
-  'core-1-seated-knee-tuck': '0689',
-  'core-3-hanging-knee-raise': '0472',
-  'core-4-lsit': '3419',
+  'core-1-forearm-plank': '3665',
+  'core-1-standard-crunch': '0274',
+  'core-2-bicycle-crunch': '0262',
+  'core-2-flutter-kicks': '0459',
+  'core-3-vup': '0507',
   // cardio (endurance catalogue)
-  'cardio-1-slow-knee-raise': '3636',
-  'cardio-1-slow-shadow-box': '2272',
-  'cardio-2-shadow-box': '2272',
-  'cardio-3-high-knees': '3636',
-  'cardio-3-fast-mountain-climber': '0630',
-  'cardio-4-burpees': '1160',
-  'cardio-3-sprawls': '0501',
-  'cardio-4-squat-thrusts': '0501',
-  'cardio-4-bear-crawl-fast': '3360',
-  'cardio-3-rope-single': '2612',
-  'cardio-4-rope-double': '2612',
-  'cardio-2-skaters-no-hop': '3361',
-  'cardio-3-wide-skaters': '3361',
+  'cardio-1-jumping-jacks': '3220',
+  'cardio-1-quick-steps': '3672',
+  'cardio-1-fast-half-squats': '3221',
+  'cardio-1-wall-high-knees': '3636',
+  'cardio-1-seal-jacks': '3224',
+  'cardio-1-running-in-place': '0685',
+  'cardio-1-fast-feet': '3656',
+  'cardio-2-backward-broad-jump': '1473',
+  'cardio-2-bear-crawl': '3360',
+  'cardio-2-drop-squat': '3543',
+  'cardio-2-cross-body-mountain-climber': '2466',
+  'cardio-2-forward-broad-jump': '1472',
+  'cardio-2-jump-squat': '0514',
+  'cardio-2-mountain-climber': '0630',
+  'cardio-2-sprinter-start': '3638',
+  'cardio-2-scissor-jumps': '3219',
+  'cardio-2-half-squat-jump': '3222',
+  'cardio-2-skater-hops': '3361',
+  'cardio-2-ski-jumps': '3671',
+  'cardio-2-high-knee-walking-lunge': '3655',
+  'cardio-2-high-knees-run': '3637',
+  'cardio-2-speed-cross-body-crunch': '0262',
+  'cardio-3-burpee': '1160',
+  'cardio-3-jack-burpee': '0501',
+  'cardio-3-tuck-jump': '0513',
+  'cardio-3-jumping-lunges': '3582',
+  'cardio-3-star-jump': '3223',
+  'cardio-3-360-jump': '3318',
+  'cardio-3-plyometric-pushup': '0492',
+  'cardio-3-cardio-vup': '0507',
   // warm-up
   'warm-pulse-2-high-knees': '3636',
+  'warm-pulse-2-jumping-jack': '3224',
   'warm-pulse-3-skater': '3361',
   // cool-down
   'cool-low-1-quad': '1512',
@@ -237,108 +246,247 @@ export function withRealGif(exercise: StrengthExercise): StrengthExercise {
 
 export const STRENGTH_EXERCISES: StrengthExercise[] = [
   /* =========================== 1. חזה, כתפיים ויד אחורית (Push) =========================== */
-  // רמה 1 — בסיסי מאוד
-  e('push-1-wall-pushup', 'שכיבות סמיכה בעמידה כנגד קיר', 'Wall Push-ups', 'push', 1, 'wallpush'),
-  e('push-1-knee-plank-hold', 'החזקת מצב שכיבת סמיכה על הברכיים', 'Knee Plank Hold', 'push', 1, 'plank', 'seconds'),
-  e('push-1-arm-raises', 'הרמות ידיים לפנים ולצדדים ללא משקל כנגד התנגדות עצמית', 'Self-Resistance Arm Raises', 'push', 1, 'ytw'),
-  e('push-1-isometric-press', 'לחיצות ידיים איזומטריות (כף אל כף מול החזה)', 'Isometric Palm Press', 'push', 1, 'ytw', 'seconds'),
-  e('push-1-wall-triceps', 'פשיטת מרפקים בעמידה כנגד קיר', 'Wall Triceps Extensions', 'push', 1, 'wallpush'),
-  // רמה 2 — מתחיל
-  e('push-2-incline-pushup', 'שכיבות סמיכה בשיפוע חיובי (ידיים על ספסל/משטח מוגבה)', 'Incline Push-ups', 'push', 2, 'wallpush'),
-  e('push-2-knee-pushup', 'שכיבות סמיכה על הברכיים', 'Knee Push-ups', 'push', 2, 'pushup'),
-  e('push-2-pike-bent-knee', 'לחיצת כתפיים בתנוחת דוב (Pike Push-ups בברכיים כפופות)', 'Bent-Knee Pike Push-ups', 'push', 2, 'pike'),
-  e('push-2-bench-dip-bent-knee', 'פשיטת מרפקים כנגד ספסל/כיסא (Bench Dips בברכיים כפופות)', 'Bent-Knee Bench Dips', 'push', 2, 'dip'),
-  e('push-2-negative-pushup', 'שכיבות סמיכה שליליות (ירידה איטית בלבד)', 'Negative Push-ups', 'push', 2, 'pushup'),
-  // רמה 3 — בינוני
-  e('push-3-full-pushup', 'שכיבות סמיכה קלאסיות מלאות', 'Full Push-ups', 'push', 3, 'pushup'),
-  e('push-3-decline-pushup', 'שכיבות סמיכה בשיפוע שלילי (רגליים מוגבהות על ספסל)', 'Decline Push-ups', 'push', 3, 'pushup'),
-  e('push-3-pike-full', 'Pike Push-ups מלאים', 'Full Pike Push-ups', 'push', 3, 'pike'),
-  e('push-3-diamond-pushup', 'שכיבות סמיכה יהלום', 'Diamond Push-ups', 'push', 3, 'pushup'),
-  e('push-3-parallel-dip', 'Dips מלאים על מקבילים', 'Full Parallel Bar Dips', 'push', 3, 'dip'),
-  // רמה 4 — מתקדם
-  e('push-4-handstand-wall', 'שכיבות סמיכה בעמידת ידיים כנגד קיר', 'Wall Handstand Push-ups', 'push', 4, 'pike'),
-  e('push-4-clap-pushup', 'שכיבות סמיכה מתפרצות עם מחיאת כף', 'Clap Push-ups', 'push', 4, 'pushup'),
-  e('push-4-one-arm-pushup', 'שכיבות סמיכה ביד אחת', 'One-Arm Push-ups', 'push', 4, 'pushup'),
-  e('push-4-archer-pushup', 'Archer Push-ups', 'Archer Push-ups', 'push', 4, 'pushup'),
-  e('push-4-ring-dip', 'Dips בשיפוע חיובי על טבעות אולימפיות / מקבילים עם הטיה קדימה', 'Ring / Forward-Lean Dips', 'push', 4, 'dip'),
+  e(
+    'push-1-kneeling-pushup',
+    'שכיבות סמיכה על הברכיים',
+    'Kneeling Push-Up',
+    'push',
+    1,
+    'pushup',
+    'רדו לברכיים, ידיים ברוחב הכתפיים. הורידו את החזה לכיוון הרצפה תוך שמירה על גב ישר, ודחפו בחזרה למעלה.',
+  ),
+  e(
+    'push-1-incline-pushup',
+    'שכיבות סמיכה בשיפוע חיובי',
+    'Incline Push-Up',
+    'push',
+    1,
+    'wallpush',
+    'הניחו ידיים על משטח מוגבה כמו ספסל. שמרו על גוף ישר מהראש עד העקבים תוך כיפוף וישור המרפקים.',
+  ),
+  e(
+    'push-1-floor-tricep-dip',
+    'פשיטת מרפקים על הרצפה',
+    'Floor Tricep Dip',
+    'push',
+    1,
+    'dip',
+    'שבו על הרצפה עם ידיים מאחוריכם, אצבעות פונות קדימה. הרימו את הישבן והורידו אותו על ידי כיפוף המרפקים לאחור.',
+  ),
+  e(
+    'push-2-standard-pushup',
+    'שכיבות סמיכה קלאסיות',
+    'Standard Push-Up',
+    'push',
+    2,
+    'pushup',
+    'תנוחת פלאנק גבוהה, ידיים מעט רחבות מהכתפיים. הורידו את הגוף כיחידה אחת ודחפו בחזרה למעלה.',
+  ),
+  e(
+    'push-2-diamond-pushup',
+    'שכיבות סמיכה יהלום',
+    'Diamond Push-Up',
+    'push',
+    2,
+    'pushup',
+    'הניחו את הידיים קרובות זו לזו מתחת לחזה ביצירת צורת יהלום, ובצעו שכיבת סמיכה תוך שמירת המרפקים צמודים לגוף.',
+  ),
+  e(
+    'push-2-pike-pushup',
+    'שכיבות סמיכה בתנוחת דוב',
+    'Pike Push-Up',
+    'push',
+    2,
+    'pike',
+    'הרימו את המותניים למעלה ליצירת V הפוך, והורידו את הראש לכיוון הרצפה על ידי כיפוף המרפקים.',
+  ),
+  e(
+    'push-3-decline-pushup',
+    'שכיבות סמיכה בשיפוע שלילי',
+    'Decline Push-Up',
+    'push',
+    3,
+    'pushup',
+    'הניחו את כפות הרגליים על משטח מוגבה וידיים על הרצפה, ובצעו שכיבת סמיכה תוך שמירה על גב ישר.',
+  ),
+  e(
+    'push-3-single-arm-pushup',
+    'שכיבות סמיכה ביד אחת',
+    'Single Arm Push-Up',
+    'push',
+    3,
+    'pushup',
+    'פשקו את הרגליים לייצוב, הניחו יד אחת מאחורי הגב, ובצעו שכיבת סמיכה מלאה ביד הנותרת בלבד.',
+  ),
 
   /* ================================== 2. גב (Pull) ================================== */
-  // רמה 1 — בסיסי מאוד
-  e('back-1-scapular-squeeze', 'קירוב שכמות בישיבה או עמידה', 'Scapular Squeezes', 'back', 1, 'ytw'),
-  e('back-1-towel-row', 'חתירה במשיכת מגבת/עמוד בעמידה בזווית קלה מאוד', 'Shallow-Angle Towel Row', 'back', 1, 'ytw'),
-  e('back-1-cobra-lift', 'שכיבה על הבטן והרמת חזה קלה בלבד (Cobra Lift ללא ניתוק רגליים)', 'Cobra Lift', 'back', 1, 'cobra'),
-  e('back-1-quadruped-balance', 'עמידת שש עם החזקת שיווי משקל (הרמת יד אחת בלבד בכל פעם)', 'Quadruped Single-Arm Balance', 'back', 1, 'birddog'),
-  e('back-1-foot-supported-hang', 'תלייה פסיבית קצרה עם רגליים על הקרקע לתמיכה', 'Foot-Supported Dead Hang', 'back', 1, 'plank', 'seconds'),
-  // רמה 2 — מתחיל
-  e('back-2-inverted-row-shallow', 'חתירה אוסטרלית בעמידה/שיפוע גבוה (Inverted Rows בזווית קלה)', 'Shallow-Angle Inverted Rows', 'back', 2, 'ytw'),
-  e('back-2-superman-hold', 'סופרמן על הקרקע בהחזקה סטטית', 'Static Superman Hold', 'back', 2, 'cobra', 'seconds'),
-  e('back-2-scapular-retraction', 'תרגיל Scapular Retractions בשכיבה על הבטן', 'Prone Scapular Retractions', 'back', 2, 'cobra'),
-  e('back-2-flexed-arm-hang', 'החזקת מתח סטטית בחלק העליון (Dead Hang / Flexed Arm Hang בעזרת קפיצה)', 'Flexed Arm Hang', 'back', 2, 'plank', 'seconds'),
-  e('back-2-negative-pullup', 'מתח שלילי (Negative Pull-ups עם ירידה איטית)', 'Negative Pull-ups', 'back', 2, 'ytw'),
-  // רמה 3 — בינוני
-  e('back-3-pullup', 'מתח קלאסי באחיזה עילית', 'Pull-ups', 'back', 3, 'ytw'),
-  e('back-3-chinup', 'מתח באחיזה תחתית', 'Chin-ups', 'back', 3, 'ytw'),
-  e('back-3-inverted-row', 'חתירה אוסטרלית אופקית (Inverted Rows במקביל לקרקע)', 'Horizontal Inverted Rows', 'back', 3, 'ytw'),
-  e('back-3-wide-pullup', 'מתח באחיזה רחבה', 'Wide-Grip Pull-ups', 'back', 3, 'ytw'),
-  e('back-3-superman-pulldown', 'Superman Pulldowns (משיכת מרפקים לאחור בשכיבה)', 'Superman Pulldowns', 'back', 3, 'cobra'),
-  // רמה 4 — מתקדם
-  e('back-4-muscleup', 'עליות כוח (Muscle-ups על מתח או טבעות)', 'Muscle-ups', 'back', 4, 'ytw'),
-  e('back-4-lsit-pullup', 'מתח L-Sit (Pull-ups ברגליים מורמות ב-90 מעלות)', 'L-Sit Pull-ups', 'back', 4, 'ytw'),
-  e('back-4-archer-pullup', 'Archer Pull-ups', 'Archer Pull-ups', 'back', 4, 'ytw'),
-  e('back-4-front-lever', 'Front Lever Raises / Tucks', 'Front Lever Raises / Tucks', 'back', 4, 'legraise'),
-  e('back-4-one-arm-pullup', 'מתח ביד אחת / בעזרת אצבעות בודדות', 'One-Arm / Finger Pull-ups', 'back', 4, 'ytw'),
+  e(
+    'back-1-back-extension',
+    'הרמות גב על הבטן',
+    'Back Extension',
+    'back',
+    1,
+    'cobra',
+    'שכבו על הבטן עם ידיים לצד הראש. הרימו את פלג הגוף העליון מהרצפה תוך שמירה על צוואר ניטרלי, וחזרו למטה באיטיות.',
+  ),
+  e(
+    'back-1-scapular-pullup',
+    'מתח שכמות',
+    'Scapular Pull-Up',
+    'back',
+    1,
+    'ytw',
+    'היתלו על המתח בזרועות ישרות. ללא כיפוף מרפקים, משכו את השכמות למטה ופנימה להרמה קלה של הגוף.',
+  ),
+  e(
+    'back-1-inverted-row-bent-knees',
+    'חתירה אוסטרלית בברכיים כפופות',
+    'Inverted Row (Bent Knees)',
+    'back',
+    1,
+    'ytw',
+    'שכבו מתחת למוט נמוך, ברכיים כפופות ורגליים על הרצפה. משכו את החזה לכיוון המוט על ידי כיווץ השכמות.',
+  ),
+  e(
+    'back-2-inverted-row',
+    'חתירה אוסטרלית מלאה',
+    'Inverted Row',
+    'back',
+    2,
+    'ytw',
+    'שכבו מתחת למוט עם רגליים ישרות ליצירת קו ישר מהראש לעקבים. משכו את החזה לכיוון המוט וחזרו למטה בשליטה.',
+  ),
+  e(
+    'back-2-pullup',
+    'מתח באחיזה עילית',
+    'Pull-Up',
+    'back',
+    2,
+    'ytw',
+    'היתלו על מוט מתח באחיזה רחבה מעט מהכתפיים. משכו את הגוף למעלה עד שהסנטר עובר את המוט, וחזרו למטה בשליטה.',
+  ),
+  e(
+    'back-2-chinup',
+    'מתח באחיזה תחתית',
+    'Chin-Up',
+    'back',
+    2,
+    'ytw',
+    'היתלו על מוט מתח עם כפות ידיים פונות אליכם. משכו את הגוף למעלה תוך כיווץ הגב והיד הקדמית.',
+  ),
+  e(
+    'back-3-lpullup',
+    'מתח L-Sit',
+    'L-Pull-Up',
+    'back',
+    3,
+    'ytw',
+    'היתלו על המתח והרימו את הרגליים ישר קדימה בזווית 90 מעלות. שמרו על הרגליים באוויר לאורך כל עליית המתח.',
+  ),
 
   /* ================================== 3. רגליים (Legs) ================================== */
-  // רמה 1 — בסיסי מאוד
-  e('lower-1-sit-to-stand', 'קימה וישיבה מכיסא', 'Sit-to-Stand', 'lower', 1, 'squat'),
-  e('lower-1-wall-calf-raise', 'הרמות עקבים לתאומים בעמידה עם אחיזה בקיר', 'Wall-Assisted Calf Raises', 'lower', 1, 'calf'),
-  e('lower-1-assisted-lunge-hold', 'מכרע סטטי קצר עם תמיכת ידיים על קיר/כיסא', 'Assisted Short Lunge Hold', 'lower', 1, 'lunge', 'seconds'),
-  e('lower-1-hip-abduction', 'הרחקת ירך בעמידה עם אחיזה בקיר', 'Standing Hip Abductions', 'lower', 1, 'lunge'),
-  e('lower-1-short-glute-bridge', 'גשר ישבן עם טווח תנועה קצר וללא שהייה', 'Short-Range Glute Bridge', 'lower', 1, 'bridge'),
-  // רמה 2 — מתחיל
-  e('lower-2-air-squat', 'סקווט משקל גוף מלא', 'Air Squats', 'lower', 2, 'squat'),
-  e('lower-2-static-lunge', 'מכרעים במקום', 'Static Lunges', 'lower', 2, 'lunge'),
-  e('lower-2-full-glute-bridge', 'גשר ישבן מלא על שתי רגליים', 'Full Glute Bridges', 'lower', 2, 'bridge'),
-  e('lower-2-calf-raise', 'עליית עקבים לתאומים ללא אחיזה', 'Unassisted Calf Raises', 'lower', 2, 'calf'),
-  e('lower-2-wall-sit', 'ישיבה כנגד קיר', 'Wall Sit', 'lower', 2, 'wallsit', 'seconds'),
-  // רמה 3 — בינוני
-  e('lower-3-walking-lunge', 'מכרעים בהליכה', 'Walking Lunges', 'lower', 3, 'lunge'),
-  e('lower-3-bulgarian-split-squat', 'סקווט בולגרי (Bulgarian Split Squats על ספסל)', 'Bulgarian Split Squats', 'lower', 3, 'lunge'),
-  e('lower-3-single-leg-bridge', 'גשר ישבן על רגל אחת', 'Single-Leg Glute Bridge', 'lower', 3, 'bridge'),
-  e('lower-3-jump-squat', 'סקווט בקפיצה', 'Jump Squats', 'lower', 3, 'jumpsquat'),
-  e('lower-3-cossack-squat', 'מכרעים הצידה (Cossack Squats בטווח תנועה בינוני)', 'Cossack Squats', 'lower', 3, 'lunge'),
-  // רמה 4 — מתקדם
-  e('lower-4-pistol-squat', 'סקווט אקדח מלא', 'Full Pistol Squats', 'lower', 4, 'squat'),
-  e('lower-4-nordic-curl', 'Nordic Curls (לירך אחורית)', 'Nordic Curls', 'lower', 4, 'legraise'),
-  e('lower-4-jumping-split-lunge', 'מכרעים בקפיצה עם החלפת רגליים באוויר', 'Jumping Split Lunges', 'lower', 4, 'jumpsquat'),
-  e('lower-4-sissy-squat', 'סקווט סקנדינבי/ססי (Sissy Squats)', 'Sissy Squats', 'lower', 4, 'squat'),
-  e('lower-4-deep-cossack-squat', 'Cossack Squats מלאים עם שהייה עמוקה ועבודה אקסצנטרית', 'Deep Cossack Squats', 'lower', 4, 'lunge'),
+  e(
+    'lower-1-swimmer-kicks',
+    'בעיטות שחיין',
+    'Swimmer Kicks',
+    'lower',
+    1,
+    'birddog',
+    'שכבו על הבטן עם ידיים מושטות קדימה. הרימו חזה ורגליים יחד ובצעו בעיטות רפרוף מהירות.',
+  ),
+  e(
+    'lower-1-bodyweight-squat',
+    'סקוואט משקל גוף',
+    'Bodyweight Squat',
+    'lower',
+    1,
+    'squat',
+    'עמדו ברוחב הכתפיים. הורידו את הישבן לאחור ולמטה תוך שמירה על גב ישר, וחזרו לעמידה.',
+  ),
+  e(
+    'lower-1-forward-lunge',
+    'מכרע קדימה',
+    'Forward Lunge',
+    'lower',
+    1,
+    'lunge',
+    'צעדו צעד גדול קדימה וכופפו את שתי הברכיים ל-90 מעלות. דחפו חזרה לעמידה והחליפו רגליים.',
+  ),
+  e(
+    'lower-2-walking-lunge',
+    'מכרעים בהליכה',
+    'Walking Lunge',
+    'lower',
+    2,
+    'lunge',
+    'בצעו מכרע קדימה, ובמקום לחזור אחורה המשיכו קדימה לצעד מכרע נוסף ברגל השנייה.',
+  ),
+  e(
+    'lower-2-jump-squat',
+    'סקוואט בקפיצה',
+    'Jump Squat',
+    'lower',
+    2,
+    'jumpsquat',
+    'רדו לסקוואט וקפצו למעלה בפיצוץ כוח. נחתו רך בחזרה לתוך הסקוואט הבא.',
+  ),
+  e(
+    'lower-3-pistol-squat',
+    'סקוואט אקדח',
+    'Pistol Squat',
+    'lower',
+    3,
+    'squat',
+    'עמדו על רגל אחת עם השנייה מושטת קדימה. רדו לסקוואט עמוק ככל הניתן על הרגל התומכת וחזרו למעלה.',
+  ),
 
   /* ================================ 4. ליבה ובטן (Core & Abs) ================================ */
-  // רמה 1 — בסיסי מאוד
-  e('core-1-wall-plank', 'פלאנק בעמידה כנגד קיר או שיפוע גבוה מאוד', 'Incline Wall Plank', 'core', 1, 'plank', 'seconds'),
-  e('core-1-pelvic-tilt', 'שכיבה על הגב והצמדת הגב התחתון למזרן (Pelvic Tilts)', 'Pelvic Tilts', 'core', 1, 'deadbug'),
-  e('core-1-seated-knee-tuck', 'הרמות ברכיים בישיבה על כיסא (Seated Knee Tucks)', 'Seated Knee Tucks', 'core', 1, 'crunch'),
-  e('core-1-arms-only-deadbug', 'תרגיל Dead Bug עם רגליים על הקרקע (תנועת ידיים בלבד)', 'Arms-Only Dead Bug', 'core', 1, 'deadbug'),
-  e('core-1-quadruped-hold', 'עמידת שש עם שמירה על מנח ניטרלי (Quadruped Hold)', 'Quadruped Neutral Hold', 'core', 1, 'birddog', 'seconds'),
-  // רמה 2 — מתחיל
-  e('core-2-forearm-plank', 'פלאנק סטטי על האמות', 'Forearm Plank', 'core', 2, 'plank', 'seconds'),
-  e('core-2-side-plank-knee', 'פלאנק צידי על הברכיים', 'Side Plank on Knees', 'core', 2, 'sideplank', 'seconds'),
-  e('core-2-crunch', 'כפיפות בטן קלאסיות', 'Crunches', 'core', 2, 'crunch'),
-  e('core-2-deadbug-full', 'תרגיל Dead Bug מלא', 'Full Dead Bug', 'core', 2, 'deadbug'),
-  e('core-2-birddog', 'תרגיל Bird-Dog', 'Bird-Dog', 'core', 2, 'birddog'),
-  // רמה 3 — בינוני
-  e('core-3-side-plank-leg-raise', 'פלאנק צידי מלא עם הרמת רגל עליונה', 'Side Plank with Leg Raise', 'core', 3, 'sideplank', 'seconds'),
-  e('core-3-hanging-knee-raise', 'הרמות ברכיים בתלייה על מתח (Hanging Knee Raises)', 'Hanging Knee Raises', 'core', 3, 'legraise'),
-  e('core-3-bicycle-crunch', 'אופניים (Bicycle Crunches)', 'Bicycle Crunches', 'core', 3, 'twist'),
-  e('core-3-reverse-crunch', 'גלגול אגן לאחור (Reverse Crunches)', 'Reverse Crunches', 'core', 3, 'crunch'),
-  e('core-3-mountain-climber', 'Mountain Climbers בקצב מבוקר', 'Controlled Mountain Climbers', 'core', 3, 'climber'),
-  // רמה 4 — מתקדם
-  e('core-4-toes-to-bar', 'הרמות רגליים ישרות למתח (Toes to Bar)', 'Toes to Bar', 'core', 4, 'legraise'),
-  e('core-4-dragon-flag', 'Dragon Flags', 'Dragon Flags', 'core', 4, 'crunch'),
-  e('core-4-lsit', 'L-Sit מלא על מקבילים או קרקע', 'Full L-Sit', 'core', 4, 'legraise', 'seconds'),
-  e('core-4-ab-wheel', 'פלאנק עם גלגלת בטן / פלאנק ארוך', 'Ab Wheel / Extended Plank', 'core', 4, 'plank', 'seconds'),
-  e('core-4-vup', 'V-Ups מלאים', 'Full V-Ups', 'core', 4, 'crunch'),
+  e(
+    'core-1-forearm-plank',
+    'פלאנק על האמות',
+    'Forearm Plank',
+    'core',
+    1,
+    'plank',
+    'השענו על האמות עם גוף ישר מהראש לעקבים. כווצו בטן וישבן והחזיקו את התנוחה.',
+    'seconds',
+  ),
+  e(
+    'core-1-standard-crunch',
+    'כפיפות בטן קלאסיות',
+    'Standard Crunch',
+    'core',
+    1,
+    'crunch',
+    'שכבו על הגב עם ברכיים כפופות. הרימו את השכמות מהרצפה תוך כיווץ הבטן, וחזרו למטה באיטיות.',
+  ),
+  e(
+    'core-2-bicycle-crunch',
+    'כפיפות בטן אופניים',
+    'Bicycle Crunch',
+    'core',
+    2,
+    'twist',
+    'שכבו על הגב עם ידיים מאחורי הראש. קרבו מרפק למול ברך נגדית לסירוגין תוך יישור הרגל השנייה.',
+  ),
+  e(
+    'core-2-flutter-kicks',
+    'בעיטות מספריים',
+    'Flutter Kicks',
+    'core',
+    2,
+    'legraise',
+    'שכבו על הגב עם רגליים ישרות מורמות מעט מהרצפה. בצעו בעיטות רפרוף קטנות ומהירות לסירוגין.',
+  ),
+  e(
+    'core-3-vup',
+    'V-Ups',
+    'V-Up',
+    'core',
+    3,
+    'crunch',
+    'שכבו ישר על הגב עם ידיים מעל הראש. הרימו רגליים וידיים בו-זמנית למפגש מעל הבטן ביצירת צורת V.',
+  ),
 ].map(withRealGif);
 
 export const EXERCISES_BY_ID: Record<string, StrengthExercise> = Object.fromEntries(

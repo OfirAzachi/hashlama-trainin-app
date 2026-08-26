@@ -345,7 +345,7 @@ export default function WeeklyTrainingBuilder({
   const [roundWorkSeconds, setRoundWorkSeconds] = useState<number[]>(() => Array(6).fill(40));
   const [roundRestSeconds, setRoundRestSeconds] = useState<number[]>(() => Array(6).fill(20));
   const [roundExerciseIds, setRoundExerciseIds] = useState<string[]>([]);
-  const [openLevels, setOpenLevels] = useState<StrengthLevel[]>([1, 2, 3, 4]);
+  const [openLevels, setOpenLevels] = useState<StrengthLevel[]>([1, 2, 3]);
   const [previewCategory, setPreviewCategory] = useState<CategoryId>('lower');
 
   const [published, setPublished] = useState<string | null>(null);
@@ -1465,7 +1465,7 @@ export default function WeeklyTrainingBuilder({
               </button>
 
               <div className="flex flex-wrap gap-2">
-                {([1, 2, 3, 4] as StrengthLevel[]).map((level) => {
+                {([1, 2, 3] as StrengthLevel[]).map((level) => {
                   const on = openLevels.includes(level);
                   return (
                     <button

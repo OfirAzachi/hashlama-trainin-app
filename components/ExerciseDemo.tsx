@@ -15,7 +15,6 @@ const LEVEL_TONE = {
   1: 'positive',
   2: 'accent',
   3: 'warning',
-  4: 'negative',
 } as const;
 
 /** Level chip: the number doubles as the points multiplier. */
@@ -247,6 +246,15 @@ export function ExerciseDemoDialog({
               {scoringHint(exercise)}
             </p>
           </div>
+
+          {exercise.instructions ? (
+            <div className="rounded-xl bg-elevated p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">איך מבצעים</p>
+              <p dir="rtl" className="mt-1 text-sm leading-relaxed text-ink">
+                {exercise.instructions}
+              </p>
+            </div>
+          ) : null}
 
           <p className="text-xs text-muted">{LEVEL_LABELS[exercise.level].name}</p>
 
