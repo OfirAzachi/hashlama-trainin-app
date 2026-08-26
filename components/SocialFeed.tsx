@@ -35,6 +35,7 @@ import { Avatar, Badge, Card, EmptyState, GroupBadge } from '@/components/ui/pri
 import { cn } from '@/lib/cn';
 import { compactCount, formatRelativeTime } from '@/lib/format';
 import { GROUP_LIST } from '@/lib/groups';
+import { fileToDataUrl } from '@/lib/image-resize';
 import { renderFormattedText } from '@/lib/richtext';
 import type { FeedPost, GroupId, SessionMedia, TrainingSession, User } from '@/lib/types';
 
@@ -793,14 +794,12 @@ function Composer({ viewer, sessions, users }: { viewer: User; sessions: Trainin
       return setError('סוג קובץ לא נתמך — תמונה, PDF או מסמך.');
     }
     if (file.size > MAX_UPLOAD_BYTES) return setError('הקובץ צריך להיות עד 10 מגה-בייט.');
-    const reader = new FileReader();
-    reader.onload = () => {
+    fileToDataUrl(file).then((result) => {
       setError(null);
-      setDataUrl(String(reader.result));
+      setDataUrl(result);
       setFileName(file.name);
       setIsImage(file.type.startsWith('image/'));
-    };
-    reader.readAsDataURL(file);
+    });
   };
 
   const publish = () => {

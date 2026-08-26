@@ -5,12 +5,14 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
 
 /**
- * Matches an authenticated account to a roster row by מ.א, then copies
- * name/role/team/unit onto `public.users` — the single source of truth for
- * both the Google-first signup flow (`/auth/callback`) and the
- * already-authenticated linking flow (`/link-account`). Only trainers add
- * people to the roster, so an unmatched or already-claimed מ.א is rejected
- * outright rather than allowed to self-declare an account.
+ * Matches an authenticated account to a roster row by its login code (first
+ * name + digits derived from the physical מ.א — see the personal_number
+ * scheme migration), then copies name/role/team/unit onto `public.users` —
+ * the single source of truth for both the Google-first signup flow
+ * (`/auth/callback`) and the already-authenticated linking flow
+ * (`/link-account`). Only trainers add people to the roster, so an unmatched
+ * or already-claimed code is rejected outright rather than allowed to
+ * self-declare an account.
  */
 export async function linkRosterToUser(
   service: SupabaseClient<Database>,
@@ -20,10 +22,10 @@ export async function linkRosterToUser(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const trimmed = personalNumber.trim();
   if (!trimmed) {
-    return { ok: false, error: 'הזינו מספר אישי.' };
+    return { ok: false, error: 'הזינו קוד כניסה.' };
   }
-  if (!/^\d+$/.test(trimmed)) {
-    return { ok: false, error: 'מספר אישי חייב להכיל ספרות בלבד.' };
+  if (!/^[א-ת]+[0-9]+$/.test(trimmed)) {
+    return { ok: false, error: 'קוד כניסה הוא שם פרטי ואחריו ספרות, בלי רווח (לדוגמה: אופיר912).' };
   }
 
   const { data: rosterRow, error: rosterError } = await service
@@ -36,10 +38,10 @@ export async function linkRosterToUser(
     return { ok: false, error: 'השיוך נכשל, נסו שוב.' };
   }
   if (!rosterRow) {
-    return { ok: false, error: 'מספר אישי לא נמצא ברשימה. פנו למאמן/ת.' };
+    return { ok: false, error: 'קוד כניסה לא נמצא ברשימה. פנו למאמן/ת.' };
   }
   if (rosterRow.matched_user_id) {
-    return { ok: false, error: 'המספר האישי הזה כבר משויך לחשבון קיים.' };
+    return { ok: false, error: 'קוד הכניסה הזה כבר משויך לחשבון קיים.' };
   }
 
   const { error: rosterUpdateError } = await service

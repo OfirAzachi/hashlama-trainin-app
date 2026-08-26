@@ -20,6 +20,7 @@ import { submitSessionLog, uploadSessionMedia } from '@/app/actions';
 import { Badge, Card, CardHeader, DurationInput, GroupBadge } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 import { METRIC_UNITS, formatDate, formatDuration, parseDuration } from '@/lib/format';
+import { fileToDataUrl } from '@/lib/image-resize';
 import type {
   ExercisePrescription,
   LogEntryInput,
@@ -200,13 +201,11 @@ export default function ParticipantLogger({
       setError('התמונה צריכה להיות עד 5 מגה-בייט.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
+    fileToDataUrl(file).then((dataUrl) => {
       setPhotoSaved(false);
       setError(null);
-      setPhoto({ dataUrl: String(reader.result), name: file.name });
-    };
-    reader.readAsDataURL(file);
+      setPhoto({ dataUrl, name: file.name });
+    });
   };
 
   if (!session || !track) {

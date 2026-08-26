@@ -130,22 +130,22 @@ export default function LoginForm({ next, initialError }: { next: string; initia
           <div className="space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="signup-personal-number" className="text-sm font-medium text-ink">
-                מספר אישי
+                קוד כניסה
               </label>
               <input
                 id="signup-personal-number"
                 name="personal_number"
                 type="text"
-                inputMode="numeric"
                 required
                 value={signupPersonalNumber}
                 onChange={(event) => setSignupPersonalNumber(event.target.value)}
-                className="input tnum"
+                className="input"
                 autoComplete="off"
+                placeholder="לדוגמה: אופיר912"
               />
               <p className="text-xs text-muted">
-                שם, קבוצה ותוצאות הבוחן מולאים אוטומטית ממאגר המאמן/ת. אחרי אימות מספר אישי, מתחברים עם Google כדי
-                לסיים את ההרשמה.
+                שם, קבוצה ותוצאות הבוחן מולאים אוטומטית ממאגר המאמן/ת. הקוד הוא השם הפרטי שלכם ואחריו הספרות שקיבלתם
+                מהמאמן/ת, בלי רווח. אחרי אימות הקוד, מתחברים עם Google כדי לסיים את ההרשמה.
               </p>
             </div>
 
@@ -162,7 +162,7 @@ export default function LoginForm({ next, initialError }: { next: string; initia
               className="btn-primary w-full justify-center gap-2"
             >
               <GoogleIcon />
-              {googlePending ? 'מעבירה ל-Google…' : 'אימות מספר אישי עם Google'}
+              {googlePending ? 'מעבירה ל-Google…' : 'אימות קוד כניסה עם Google'}
             </button>
           </div>
         )}

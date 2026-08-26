@@ -12,7 +12,7 @@ export default function LinkAccountForm() {
 
   const handleSubmit = async () => {
     if (!value.trim()) {
-      setError('הזינו מספר אישי.');
+      setError('הזינו קוד כניסה.');
       return;
     }
     setPending(true);
@@ -27,22 +27,22 @@ export default function LinkAccountForm() {
       <div className="text-center">
         <h1 className="text-xl font-bold text-ink">כמעט סיימנו</h1>
         <p className="mt-1 text-sm text-muted">
-          הזינו את המספר האישי שלכם כדי לשייך את חשבון ה-Google לפרטים מהבוחן.
+          הזינו את קוד הכניסה שלכם כדי לשייך את חשבון ה-Google לפרטים מהבוחן.
         </p>
       </div>
 
       <Card className="card-pad space-y-4">
         <div className="space-y-1.5">
           <label htmlFor="link-personal-number" className="text-sm font-medium text-ink">
-            מספר אישי
+            קוד כניסה
           </label>
           <input
             id="link-personal-number"
             value={value}
             onChange={(event) => setValue(event.target.value)}
-            inputMode="numeric"
-            className="input tnum"
+            className="input"
             autoComplete="off"
+            placeholder="לדוגמה: אופיר912"
           />
         </div>
 
