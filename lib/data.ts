@@ -65,6 +65,7 @@ function mapUser(row: any): User {
     unit: row.unit,
     avatar_url: row.avatar_url,
     joined_at: row.joined_at,
+    km_levels: row.km_levels ?? [],
   };
 }
 

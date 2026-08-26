@@ -169,7 +169,7 @@ export default function RunningLogger({
   }
 
   return (
-    <div className="space-y-4 pb-24">
+    <div className="space-y-4 pb-40 sm:pb-24">
       {/* --------------------------------------------------- the brief */}
       <Card>
         <CardHeader
@@ -343,7 +343,7 @@ export default function RunningLogger({
         </p>
       ) : null}
 
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 p-3 backdrop-blur sm:sticky sm:bottom-4 sm:rounded-2xl sm:border">
+      <div className="fixed inset-x-0 bottom-16 z-20 border-t border-line bg-surface/95 p-3 backdrop-blur sm:sticky sm:bottom-4 sm:rounded-2xl sm:border">
         <div className="mx-auto flex max-w-3xl items-center gap-3">
           <div className="flex items-center gap-2">
             <Timer aria-hidden className="h-4 w-4 text-muted" />

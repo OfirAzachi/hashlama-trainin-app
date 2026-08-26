@@ -51,6 +51,8 @@ export interface User {
   unit: string | null;
   avatar_url: string | null;
   joined_at: string; // ISO date
+  /** כמ (operational-fitness) status — non-empty means an exemption applies (e.g. may skip exercises). */
+  km_levels: number[];
 }
 
 /**

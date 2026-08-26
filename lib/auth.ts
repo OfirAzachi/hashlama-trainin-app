@@ -25,6 +25,7 @@ export async function getCurrentUser(): Promise<User | null> {
     unit: data.unit,
     avatar_url: data.avatar_url,
     joined_at: data.joined_at,
+    km_levels: data.km_levels ?? [],
   };
 }
 

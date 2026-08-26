@@ -53,7 +53,7 @@ export async function confirmRosterDetails(input: ConfirmRosterDetailsInput): Pr
   const service = createServiceClient();
   const { data: roster, error: fetchError } = await service
     .from('roster')
-    .select('personal_number, final_run_seconds, pushup_achievement')
+    .select('personal_number, final_run_seconds, pushup_achievement, final_score')
     .eq('matched_user_id', user.id)
     .maybeSingle();
 
@@ -93,7 +93,9 @@ export async function confirmRosterDetails(input: ConfirmRosterDetailsInput): Pr
       unit,
       final_run_seconds: finalRunSeconds,
       pushup_achievement: pushupAchievement,
-      final_score: input.finalScore,
+      // Final score is never participant-editable, present or missing —
+      // always the roster's own value, whatever the client sent.
+      final_score: roster.final_score,
       km_levels: [...new Set(input.kmLevels)].sort(),
     })
     .eq('id', user.id);

@@ -264,21 +264,15 @@ export default function OnboardingForm({
           </div>
         </div>
 
-        {roster.final_score != null ? (
-          <div className="space-y-1.5">
-            <label htmlFor="field-score" className="label">
-              ציון סופי
-            </label>
-            <input
-              id="field-score"
-              type="number"
-              min={0}
-              className="input tnum"
-              value={score}
-              onChange={(event) => setScore(event.target.value)}
-            />
-          </div>
-        ) : null}
+        <div className="space-y-1.5">
+          <label htmlFor="field-score" className="label">
+            ציון סופי
+          </label>
+          <p id="field-score" className="input tnum flex items-center bg-elevated text-muted">
+            {roster.final_score != null ? score : 'לא נרשם'}
+          </p>
+          <p className="text-xs text-muted">ציון הבוחן נקבע מהמערכת ואינו ניתן לעריכה.</p>
+        </div>
 
         <div className="space-y-1.5">
           <p className="label">כמ</p>
