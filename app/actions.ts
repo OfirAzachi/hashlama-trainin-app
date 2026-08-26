@@ -403,8 +403,11 @@ export async function updateExerciseGif(
   }
 
   await setExerciseGifOverride(exerciseId, trimmed);
-  revalidatePath('/trainer');
-  revalidatePath('/participant');
+  // No revalidatePath here: the animation is driven live by
+  // ExerciseGifOverridesProvider's own refresh() (see ExerciseDemo.tsx's
+  // GifLinkEditor), not by server-rendered page props. Revalidating the
+  // whole page on every save just causes a visible full-page reload for
+  // no benefit.
   return { ok: true, data: null };
 }
 
@@ -414,8 +417,6 @@ export async function removeExerciseGif(userId: string, exerciseId: string): Pro
   if (authError) return { ok: false, error: authError };
 
   await clearExerciseGifOverride(exerciseId);
-  revalidatePath('/trainer');
-  revalidatePath('/participant');
   return { ok: true, data: null };
 }
 
