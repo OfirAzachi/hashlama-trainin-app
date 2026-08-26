@@ -1564,7 +1564,7 @@ export default function WeeklyTrainingBuilder({
                         <p dir="rtl" className="truncate text-sm text-ink">
                           {exercise.name}
                         </p>
-                        <p className="truncate text-xs text-muted">{exercise.nameEn}</p>
+                        <p className="truncate text-xs text-muted">{exercise.instructions}</p>
                       </div>
                       <LevelBadge level={exercise.level} />
                       <ExerciseDemoButton exercise={exercise} editableBy={trainerId} />
@@ -1611,7 +1611,7 @@ export default function WeeklyTrainingBuilder({
                         <p dir="rtl" className="truncate text-sm text-ink">
                           {exercise.name}
                         </p>
-                        <p className="truncate text-xs text-muted">{exercise.nameEn}</p>
+                        <p className="truncate text-xs text-muted">{exercise.instructions}</p>
                       </div>
                       <LevelBadge level={exercise.level} />
                       <ExerciseDemoButton exercise={exercise} editableBy={trainerId} />

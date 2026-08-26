@@ -274,7 +274,7 @@ function ExercisePicker({
                 <span dir="rtl" className="block truncate text-sm font-medium text-ink">
                   {exercise.name}
                 </span>
-                <span className="block truncate text-xs text-muted">{exercise.nameEn}</span>
+                <span className="block truncate text-xs text-muted">{exercise.instructions}</span>
                 <span className="mt-1 flex items-center gap-1.5">
                   <LevelBadge level={exercise.level} />
                   <span className="text-[11px] text-muted">{scoringHint(exercise)}</span>
@@ -334,6 +334,8 @@ export default function StrengthLogger({
     () =>
       drafts.map((draft) => {
         const exercise = draft.exerciseId ? findExercise(draft.exerciseId) : undefined;
+        // Warm-up/cool-down: no points, no numeric input — "done" is done.
+        if (fixedExercises) return { exercise, reps: 0, points: 0 };
         const raw = Number(draft.raw);
         if (!exercise || !Number.isFinite(raw) || raw <= 0) {
           return { exercise, reps: 0, points: 0 };
@@ -341,11 +343,19 @@ export default function StrengthLogger({
         const reps = repsFromRaw(exercise, raw);
         return { exercise, reps, points: reps * exercise.level };
       }),
-    [drafts],
+    [drafts, fixedExercises],
   );
 
+  const isDone = (index: number) => drafts[index]?.raw !== '';
+  const toggleDone = (index: number) =>
+    setDrafts((current) =>
+      current.map((draft, i) => (i === index ? { ...draft, raw: draft.raw ? '' : '1' } : draft)),
+    );
+
   const myTotal = scored.reduce((sum, entry) => sum + entry.points, 0);
-  const filled = scored.filter((entry) => entry.points > 0).length;
+  const filled = fixedExercises
+    ? drafts.filter((_, index) => isDone(index)).length
+    : scored.filter((entry) => entry.points > 0).length;
 
   const setRaw = (index: number, raw: string) =>
     setDrafts((current) => current.map((draft, i) => (i === index ? { ...draft, raw } : draft)));
@@ -375,17 +385,21 @@ export default function StrengthLogger({
     mutationFn: async () => {
       const entries = drafts
         .map((draft, index) => ({ draft, index }))
-        .filter(({ draft }) => draft.exerciseId && Number(draft.raw) > 0)
+        .filter(({ draft }) => draft.exerciseId && (fixedExercises ? draft.raw !== '' : Number(draft.raw) > 0))
         .map(({ draft, index }) => ({
           session_id: session.id,
           user_id: participant.id,
           round_index: index,
           exercise_id: draft.exerciseId!,
-          raw_value: Number(draft.raw),
+          // Warm-up/cool-down: a sub-unit value floors to 0 reps (and so 0
+          // points) server-side — "done" is recorded without scoring it.
+          raw_value: fixedExercises ? 0.001 : Number(draft.raw),
         }));
 
       if (entries.length === 0) {
-        throw new Error('בחרו תרגיל ורשמו מה ביצעתם לפחות בסבב אחד.');
+        throw new Error(
+          fixedExercises ? 'סמנו לפחות תרגיל אחד כבוצע לפני השמירה.' : 'בחרו תרגיל ורשמו מה ביצעתם לפחות בסבב אחד.',
+        );
       }
 
       const result = await submitStrengthWorkout(entries);
@@ -394,7 +408,7 @@ export default function StrengthLogger({
     },
     onSuccess: (created) => {
       setError(null);
-      setSaved(created.reduce((sum, log) => sum + log.points, 0));
+      setSaved(fixedExercises ? created.length : created.reduce((sum, log) => sum + log.points, 0));
       startTransition(() => router.refresh());
     },
     onError: (mutationError: Error) => {
@@ -418,7 +432,11 @@ export default function StrengthLogger({
         <CardHeader
           icon={<Sparkles className="h-4 w-4" />}
           title={session.title}
-          subtitle={`משחק נקודות · שבוע ${session.week_index} · ${formatDate(session.date)}`}
+          subtitle={
+            fixedExercises
+              ? `${CATALOG_META[config.catalog].label} · שבוע ${session.week_index} · ${formatDate(session.date)}`
+              : `משחק נקודות · שבוע ${session.week_index} · ${formatDate(session.date)}`
+          }
           action={<Badge tone="accent">{CATALOG_META[config.catalog].label}</Badge>}
         />
         <div className="card-pad space-y-3">
@@ -426,32 +444,34 @@ export default function StrengthLogger({
             {session.workout_instructions}
           </p>
 
-          <p className="tnum text-xs text-muted">{describeRoundTiming(config)}</p>
+          {fixedExercises ? null : <p className="tnum text-xs text-muted">{describeRoundTiming(config)}</p>}
           <div className="grid grid-cols-1 gap-2 text-center">
             <div className="rounded-xl bg-elevated p-2.5">
               <p className="text-lg font-semibold tnum text-ink">{roundCount(config)}</p>
-              <p className="text-[11px] text-muted">סבבים</p>
+              <p className="text-[11px] text-muted">{fixedExercises ? 'תרגילים' : 'סבבים'}</p>
             </div>
           </div>
 
           <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs text-accent">
             {fixedExercises
-              ? 'המאמנת קבעה תרגיל אחד לכל סבב — פשוט מבצעים ורושמים. נקודות = חזרות × רמה, כל 5 שניות = חזרה אחת.'
+              ? 'עוברים על כל תרגיל בקצב שלכם ומסמנים כבוצע — בלי טיימר ובלי ניקוד, זה רק חלק מהמעקב על ההשלמה של האימון.'
               : 'נקודות = חזרות × רמה. בתרגילים סטטיים: כל 5 שניות = חזרה אחת. זחילת דוב: כל 2 מטר = חזרה אחת.'}
           </p>
         </div>
       </Card>
 
       {/* ---------------------------------------------------- timer */}
-      <IntervalTimer
-        workSeconds={config.round_work_seconds}
-        restSeconds={config.round_rest_seconds}
-        rounds={roundCount(config)}
-        onRoundStart={(round) => {
-          const element = document.getElementById(`round-${round}`);
-          element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }}
-      />
+      {fixedExercises ? null : (
+        <IntervalTimer
+          workSeconds={config.round_work_seconds}
+          restSeconds={config.round_rest_seconds}
+          rounds={roundCount(config)}
+          onRoundStart={(round) => {
+            const element = document.getElementById(`round-${round}`);
+            element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }}
+        />
+      )}
 
       {/* ---------------------------------------------------- rounds */}
       <ol className="space-y-3">
@@ -461,10 +481,26 @@ export default function StrengthLogger({
 
           return (
             <li key={index} id={`round-${index}`}>
-              <Card className={cn('overflow-hidden', entry.points > 0 && 'border-emerald-500/40')}>
+              <Card
+                className={cn(
+                  'overflow-hidden',
+                  (fixedExercises ? isDone(index) : entry.points > 0) && 'border-emerald-500/40',
+                )}
+              >
                 <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
-                  <p className="text-sm font-semibold text-ink">סבב {index + 1}</p>
-                  {entry.points > 0 ? (
+                  <p className="text-sm font-semibold text-ink">
+                    {fixedExercises ? `תרגיל ${index + 1}` : `סבב ${index + 1}`}
+                  </p>
+                  {fixedExercises ? (
+                    isDone(index) ? (
+                      <Badge tone="positive">
+                        <CheckCircle2 aria-hidden className="h-3.5 w-3.5" />
+                        בוצע
+                      </Badge>
+                    ) : (
+                      <Badge tone="neutral">טרם בוצע</Badge>
+                    )
+                  ) : entry.points > 0 ? (
                     <Badge tone="positive">
                       <CheckCircle2 aria-hidden className="h-3.5 w-3.5" />
                       {entry.points} נקודות
@@ -501,7 +537,7 @@ export default function StrengthLogger({
                         <p dir="rtl" className="truncate text-sm font-medium text-ink">
                           {exercise.name}
                         </p>
-                        <p className="truncate text-xs text-muted">{exercise.nameEn}</p>
+                        <p className="truncate text-xs text-muted">{exercise.instructions}</p>
                         <span className="mt-1 flex flex-wrap items-center gap-1.5">
                           <LevelBadge level={exercise.level} />
                           <Badge tone="neutral">{findCategory(exercise.category)?.name}</Badge>
@@ -511,64 +547,80 @@ export default function StrengthLogger({
                       <ExerciseDemoButton exercise={exercise} />
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    {fixedExercises ? (
                       <button
                         type="button"
-                        className="btn-secondary h-11 w-11 shrink-0 p-0"
-                        aria-label={`הפחתה — ${exercise.name}`}
-                        onClick={() => bump(index, -(UNIT_STEP[exercise.unit] ?? 1))}
+                        onClick={() => toggleDone(index)}
+                        className={cn(
+                          'flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors',
+                          isDone(index)
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                            : 'btn-secondary',
+                        )}
                       >
-                        <Minus aria-hidden className="h-4 w-4" />
+                        <CheckCircle2 aria-hidden className="h-4 w-4" />
+                        {isDone(index) ? 'בוצע — לחצו לביטול' : 'סימון כבוצע'}
                       </button>
-
-                      <div className="relative flex-1">
-                        <input
-                          className="input h-11 pe-14 text-base tnum"
-                          inputMode="numeric"
-                          placeholder="0"
-                          aria-label={`כמה ${unitLabel(exercise)} בסבב ${index + 1}`}
-                          value={draft.raw}
-                          onChange={(event) => setRaw(index, event.target.value.replace(/[^\d.]/g, ''))}
-                        />
-                        <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs text-muted">
-                          {unitLabel(exercise)}
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        className="btn-secondary h-11 w-11 shrink-0 p-0"
-                        aria-label={`הוספה — ${exercise.name}`}
-                        onClick={() => bump(index, UNIT_STEP[exercise.unit] ?? 1)}
-                      >
-                        <Plus aria-hidden className="h-4 w-4" />
-                      </button>
-                    </div>
-
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs text-muted tnum">
-                        {entry.reps} חזרות × רמה {exercise.level} ={' '}
-                        <span className="font-semibold text-ink">{entry.points} נקודות</span>
-                      </p>
-                      {fixedExercises ? null : (
-                        <div className="flex gap-1">
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            className="btn-ghost px-2 py-1 text-xs"
-                            onClick={() => setPickerRound(index)}
+                            className="btn-secondary h-11 w-11 shrink-0 p-0"
+                            aria-label={`הפחתה — ${exercise.name}`}
+                            onClick={() => bump(index, -(UNIT_STEP[exercise.unit] ?? 1))}
                           >
-                            החלפת תרגיל
+                            <Minus aria-hidden className="h-4 w-4" />
                           </button>
+
+                          <div className="relative flex-1">
+                            <input
+                              className="input h-11 pe-14 text-base tnum"
+                              inputMode="numeric"
+                              placeholder="0"
+                              aria-label={`כמה ${unitLabel(exercise)} בסבב ${index + 1}`}
+                              value={draft.raw}
+                              onChange={(event) => setRaw(index, event.target.value.replace(/[^\d.]/g, ''))}
+                            />
+                            <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs text-muted">
+                              {unitLabel(exercise)}
+                            </span>
+                          </div>
+
                           <button
                             type="button"
-                            className="btn-ghost px-2 py-1 text-xs text-rose-500"
-                            onClick={() => clearRound(index)}
+                            className="btn-secondary h-11 w-11 shrink-0 p-0"
+                            aria-label={`הוספה — ${exercise.name}`}
+                            onClick={() => bump(index, UNIT_STEP[exercise.unit] ?? 1)}
                           >
-                            ניקוי
+                            <Plus aria-hidden className="h-4 w-4" />
                           </button>
                         </div>
-                      )}
-                    </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs text-muted tnum">
+                            {entry.reps} חזרות × רמה {exercise.level} ={' '}
+                            <span className="font-semibold text-ink">{entry.points} נקודות</span>
+                          </p>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              className="btn-ghost px-2 py-1 text-xs"
+                              onClick={() => setPickerRound(index)}
+                            >
+                              החלפת תרגיל
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-ghost px-2 py-1 text-xs text-rose-500"
+                              onClick={() => clearRound(index)}
+                            >
+                              ניקוי
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </Card>
@@ -578,15 +630,17 @@ export default function StrengthLogger({
       </ol>
 
       {/* -------------------------------------------------- team score */}
-      <Card className="card-pad space-y-2">
-        <div className="flex items-center gap-2">
-          <Target aria-hidden className="h-4 w-4 text-muted" />
-          <h3 className="text-sm font-semibold text-ink">נקודות לקבוצה</h3>
-        </div>
-        <p className="text-xs text-muted">
-          אין יעד להשלים — כל נקודה שאתם רושמים כאן מצטרפת ישירות לניקוד הקבוצה שלכם בעמוד הבית.
-        </p>
-      </Card>
+      {fixedExercises ? null : (
+        <Card className="card-pad space-y-2">
+          <div className="flex items-center gap-2">
+            <Target aria-hidden className="h-4 w-4 text-muted" />
+            <h3 className="text-sm font-semibold text-ink">נקודות לקבוצה</h3>
+          </div>
+          <p className="text-xs text-muted">
+            אין יעד להשלים — כל נקודה שאתם רושמים כאן מצטרפת ישירות לניקוד הקבוצה שלכם בעמוד הבית.
+          </p>
+        </Card>
+      )}
 
       {error ? (
         <p role="alert" className="flex items-center gap-2 text-sm text-rose-600 dark:text-rose-400">
@@ -598,7 +652,7 @@ export default function StrengthLogger({
       {saved !== null ? (
         <p role="status" className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
           <CheckCircle2 aria-hidden className="h-4 w-4" />
-          נשמר — צברת {saved} נקודות לקבוצה.
+          {fixedExercises ? `נשמר — האימון הושלם.` : `נשמר — צברת ${saved} נקודות לקבוצה.`}
         </p>
       ) : null}
 
@@ -606,11 +660,17 @@ export default function StrengthLogger({
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 p-3 backdrop-blur sm:sticky sm:bottom-4 sm:rounded-2xl sm:border">
         <div className="mx-auto flex max-w-3xl items-center gap-3">
           <div className="flex items-center gap-2">
-            <TimerIcon aria-hidden className="h-4 w-4 text-muted" />
+            {fixedExercises ? (
+              <CheckCircle2 aria-hidden className="h-4 w-4 text-muted" />
+            ) : (
+              <TimerIcon aria-hidden className="h-4 w-4 text-muted" />
+            )}
             <div>
-              <p className="text-lg font-semibold leading-tight tnum text-ink">{myTotal} נק׳</p>
+              {fixedExercises ? null : (
+                <p className="text-lg font-semibold leading-tight tnum text-ink">{myTotal} נק׳</p>
+              )}
               <p className="text-[11px] text-muted tnum">
-                {filled}/{roundCount(config)} סבבים מולאו
+                {filled}/{roundCount(config)} {fixedExercises ? 'תרגילים בוצעו' : 'סבבים מולאו'}
               </p>
             </div>
           </div>
@@ -626,7 +686,7 @@ export default function StrengthLogger({
             ) : (
               <Save aria-hidden className="h-4 w-4" />
             )}
-            {save.isPending ? 'שומר…' : 'שמירת הנקודות שלי'}
+            {save.isPending ? 'שומר…' : fixedExercises ? 'שמירת האימון' : 'שמירת הנקודות שלי'}
           </button>
         </div>
       </div>

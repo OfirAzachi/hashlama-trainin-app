@@ -190,7 +190,7 @@ export default function PointsBoard({
                         {exercise!.name}
                       </span>
                       <span className="block truncate text-[11px] text-muted">
-                        {exercise!.nameEn}
+                        {exercise!.instructions}
                       </span>
                     </span>
                     <LevelBadge level={exercise!.level} />

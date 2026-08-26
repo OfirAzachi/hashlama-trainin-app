@@ -206,7 +206,7 @@ export function ExerciseDemoDialog({
             <p dir="rtl" className="truncate text-base font-semibold text-ink">
               {exercise.name}
             </p>
-            <p className="truncate text-sm text-muted">{exercise.nameEn}</p>
+            <p className="truncate text-sm text-muted">{exercise.instructions}</p>
           </div>
           <button type="button" onClick={onClose} className="btn-ghost h-9 w-9 p-0" aria-label="סגירת ההדגמה">
             <X aria-hidden className="h-5 w-5" />
