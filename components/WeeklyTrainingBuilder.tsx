@@ -27,9 +27,14 @@ import {
   Zap,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { startTransition, useMemo, useState } from 'react';
+import { startTransition, useEffect, useMemo, useState } from 'react';
 
-import { createTrainingSession, deleteTrainingSession, updateTrainingSession } from '@/app/actions';
+import {
+  createTrainingSession,
+  deleteTrainingSession,
+  fetchSessionTemplates,
+  updateTrainingSession,
+} from '@/app/actions';
 import { Badge, Card } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 import { ExerciseDemoButton, LevelBadge } from '@/components/ExerciseDemo';
@@ -56,6 +61,7 @@ import type {
   RunPaceCategory,
   SessionPlanInput,
   SessionTarget,
+  SessionTemplate,
   TrainingSession,
   TrainingType,
 } from '@/lib/types';
@@ -322,6 +328,8 @@ export default function WeeklyTrainingBuilder({
   const [weekIndex, setWeekIndex] = useState(nextWeekIndex);
   const [instructions, setInstructions] = useState('');
   const [loadedFromSessionId, setLoadedFromSessionId] = useState('');
+  const [templates, setTemplates] = useState<SessionTemplate[]>([]);
+  const [loadedFromTemplateId, setLoadedFromTemplateId] = useState('');
   /** Set while editing an already-published session in place, instead of creating a new one. */
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingSessionTitle, setEditingSessionTitle] = useState('');
@@ -347,6 +355,12 @@ export default function WeeklyTrainingBuilder({
   const [roundExerciseIds, setRoundExerciseIds] = useState<string[]>([]);
   const [openLevels, setOpenLevels] = useState<StrengthLevel[]>([1, 2, 3]);
   const [previewCategory, setPreviewCategory] = useState<CategoryId>('lower');
+
+  useEffect(() => {
+    fetchSessionTemplates().then((result) => {
+      if (result.ok) setTemplates(result.data);
+    });
+  }, []);
 
   const [published, setPublished] = useState<string | null>(null);
   const [publishedWasEdit, setPublishedWasEdit] = useState(false);
@@ -460,8 +474,10 @@ export default function WeeklyTrainingBuilder({
       current.includes(level) ? current.filter((entry) => entry !== level) : [...current, level],
     );
 
-  /** Loads a session's structure into the draft state — segments/rounds/timing. */
-  const applySessionStructure = (source: TrainingSession) => {
+  /** Loads a session's (or template's) structure into the draft state — segments/rounds/timing. */
+  const applySessionStructure = (
+    source: Pick<TrainingSession, 'training_type' | 'workout_instructions' | 'running' | 'points_game'>,
+  ) => {
     setTrainingType(source.training_type);
     setInstructions(source.workout_instructions);
 
@@ -501,8 +517,21 @@ export default function WeeklyTrainingBuilder({
    */
   const loadPastSession = (sessionId: string) => {
     setLoadedFromSessionId(sessionId);
+    setLoadedFromTemplateId('');
     const source = pastSessions.find((session) => session.id === sessionId);
     if (source) applySessionStructure(source);
+  };
+
+  /** Loads a named template as a starting point — same idea as loadPastSession, without a real week behind it. */
+  const loadTemplate = (templateId: string) => {
+    setLoadedFromTemplateId(templateId);
+    setLoadedFromSessionId('');
+    const source = templates.find((template) => template.id === templateId);
+    if (!source) return;
+    applySessionStructure(source);
+    if (title.trim() === `שבוע ${nextWeekIndex} —`.trim() || title.trim().length === 0) {
+      setTitle(`שבוע ${nextWeekIndex} — ${source.title}`);
+    }
   };
 
   /**
@@ -787,6 +816,36 @@ export default function WeeklyTrainingBuilder({
               <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={cancelEditing}>
                 ביטול עריכה
               </button>
+            </div>
+          ) : null}
+
+          {templates.length > 0 && !editingSessionId ? (
+            <div className="space-y-1.5 rounded-2xl border border-line bg-elevated/50 p-3">
+              <label htmlFor="wt-template" className="text-sm font-medium text-ink">
+                להתחיל מתבנית מוכנה? <span className="font-normal text-muted">(אופציונלי)</span>
+              </label>
+              <select
+                id="wt-template"
+                className="input"
+                value={loadedFromTemplateId}
+                onChange={(event) => loadTemplate(event.target.value)}
+              >
+                <option value="">בחרו תבנית</option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.title}
+                  </option>
+                ))}
+              </select>
+              {loadedFromTemplateId ? (
+                <p className="text-xs text-muted">
+                  {templates.find((template) => template.id === loadedFromTemplateId)?.description}
+                </p>
+              ) : (
+                <p className="text-xs text-muted">
+                  טוענת מבנה מוכן (סבבים/מקטעים ותזמון) לתוך אימון חדש — אפשר לשנות הכל אחרי הטעינה.
+                </p>
+              )}
             </div>
           ) : null}
 

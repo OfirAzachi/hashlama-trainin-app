@@ -8,6 +8,7 @@ import {
   deleteSession,
   getExerciseGifOverrides,
   getMediaOwner,
+  getSessionTemplates,
   getUsers,
   getUsersByIds,
   insertComment,
@@ -39,6 +40,7 @@ import type {
   RunningEntryInput,
   RunningLog,
   SessionPlanInput,
+  SessionTemplate,
   StrengthEntryInput,
   StrengthLog,
   TrainingSession,
@@ -423,6 +425,11 @@ export async function removeExerciseGif(userId: string, exerciseId: string): Pro
 export async function fetchExerciseGifOverrides(): Promise<ActionResult<Record<string, string>>> {
   const overrides = await getExerciseGifOverrides();
   return { ok: true, data: overrides };
+}
+
+export async function fetchSessionTemplates(): Promise<ActionResult<SessionTemplate[]>> {
+  const templates = await getSessionTemplates();
+  return { ok: true, data: templates };
 }
 
 /* --------------------------------------------------------- social feed */

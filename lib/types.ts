@@ -496,3 +496,21 @@ export interface RunningEntryInput {
   repeats_done: number;
   actual_seconds: number;
 }
+
+/* -------------------------------------------------------------- templates */
+
+/**
+ * A reusable starting point for a new week — same shape the builder already
+ * loads from a past session (see WeeklyTrainingBuilder's applySessionStructure),
+ * just without a date/week/id tying it to one specific week.
+ */
+export interface SessionTemplate {
+  id: string;
+  training_type: TrainingType;
+  title: string;
+  /** One-line blurb shown in the template picker. */
+  description: string;
+  workout_instructions: string;
+  points_game: PointsGameConfig | null;
+  running: RunningConfig | null;
+}

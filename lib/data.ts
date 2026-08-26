@@ -40,6 +40,7 @@ import type {
   NotificationItem,
   RunningEntryInput,
   RunningLog,
+  SessionTemplate,
   StrengthEntryInput,
   StrengthLog,
   StrengthSnapshot,
@@ -249,6 +250,21 @@ export async function clearExerciseGifOverride(exerciseId: string): Promise<void
   const supabase = await createClient();
   const { error } = await supabase.from('exercise_gif_overrides').delete().eq('exercise_id', exerciseId);
   if (error) throw error;
+}
+
+export async function getSessionTemplates(): Promise<SessionTemplate[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from('session_templates').select('*').order('created_at');
+  if (error) throw error;
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    training_type: row.training_type,
+    title: row.title,
+    description: row.description,
+    workout_instructions: row.workout_instructions,
+    points_game: row.points_game,
+    running: row.running,
+  }));
 }
 
 /**

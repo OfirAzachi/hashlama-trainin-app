@@ -119,6 +119,39 @@ export type Database = {
         }
         Relationships: []
       }
+      session_templates: {
+        Row: {
+          id: string
+          training_type: string
+          title: string
+          description: string
+          workout_instructions: string
+          points_game: Json | null
+          running: Json | null
+          created_at: string
+        }
+        Insert: {
+          id: string
+          training_type: string
+          title: string
+          description?: string
+          workout_instructions?: string
+          points_game?: Json | null
+          running?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          training_type?: string
+          title?: string
+          description?: string
+          workout_instructions?: string
+          points_game?: Json | null
+          running?: Json | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       media_comments: {
         Row: {
           body: string
