@@ -303,10 +303,13 @@ export default function StrengthLogger({
   session,
   participant,
   myLogs,
+  onFinished,
 }: {
   session: TrainingSession;
   participant: Participant;
   myLogs: StrengthLog[];
+  /** Called after a successful save, once the confirmation has had a moment to show — lets the parent return to the trainings list. */
+  onFinished?: () => void;
 }) {
   const router = useRouter();
   const config = session.points_game;
@@ -410,6 +413,10 @@ export default function StrengthLogger({
       setError(null);
       setSaved(fixedExercises ? created.length : created.reduce((sum, log) => sum + log.points, 0));
       startTransition(() => router.refresh());
+      if (onFinished) {
+        // Give the "האימון הושלם" confirmation a moment on screen before leaving.
+        window.setTimeout(onFinished, 1200);
+      }
     },
     onError: (mutationError: Error) => {
       setSaved(null);
@@ -457,6 +464,11 @@ export default function StrengthLogger({
               ? 'עוברים על כל תרגיל בקצב שלכם ומסמנים כבוצע — בלי טיימר ובלי ניקוד, זה רק חלק מהמעקב על ההשלמה של האימון.'
               : 'נקודות = חזרות × רמה. בתרגילים סטטיים: כל 5 שניות = חזרה אחת. זחילת דוב: כל 2 מטר = חזרה אחת.'}
           </p>
+          {fixedExercises ? null : (
+            <p className="text-[11px] text-muted">
+              הטיימר הוא כלי עזר בלבד — לא חובה להפעיל אותו. אפשר למלא מספרים ולסיים את האימון בכל שלב.
+            </p>
+          )}
         </div>
       </Card>
 
@@ -541,7 +553,11 @@ export default function StrengthLogger({
                         <span className="mt-1 flex flex-wrap items-center gap-1.5">
                           <LevelBadge level={exercise.level} />
                           <Badge tone="neutral">{findCategory(exercise.category)?.name}</Badge>
+                          <Badge tone="neutral">מומלץ: {config.round_work_seconds[index] ?? 40} שנ׳</Badge>
                         </span>
+                        <p className="mt-1 text-[11px] text-muted">
+                          זו המלצה בלבד — אין טיימר שרץ, ממלאים ושומרים בקצב שלכם.
+                        </p>
                       </div>
 
                       <ExerciseDemoButton exercise={exercise} />
@@ -652,7 +668,7 @@ export default function StrengthLogger({
       {saved !== null ? (
         <p role="status" className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
           <CheckCircle2 aria-hidden className="h-4 w-4" />
-          {fixedExercises ? `נשמר — האימון הושלם.` : `נשמר — צברת ${saved} נקודות לקבוצה.`}
+          {fixedExercises ? `האימון הושלם.` : `האימון הושלם — צברת ${saved} נקודות לקבוצה.`}
         </p>
       ) : null}
 
@@ -686,7 +702,7 @@ export default function StrengthLogger({
             ) : (
               <Save aria-hidden className="h-4 w-4" />
             )}
-            {save.isPending ? 'שומר…' : fixedExercises ? 'שמירת האימון' : 'שמירת הנקודות שלי'}
+            {save.isPending ? 'מסיים…' : 'סיום האימון'}
           </button>
         </div>
       </div>

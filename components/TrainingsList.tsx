@@ -111,6 +111,7 @@ export default function TrainingsList({
             session={open.session}
             participant={participant}
             myLogs={open.strengthLogs}
+            onFinished={() => setOpenId(null)}
           />
         ) : (
           <ParticipantLogger
