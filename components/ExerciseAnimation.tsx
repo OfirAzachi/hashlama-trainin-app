@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { resolveGifUrl, useExerciseGifOverrides } from '@/components/ExerciseGifOverrides';
 import { cn } from '@/lib/cn';
 import type { AnimationKey, StrengthExercise } from '@/lib/strength-catalog';
 
@@ -514,6 +515,8 @@ export default function ExerciseAnimation({
   className?: string;
 }) {
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [gifFailed, setGifFailed] = useState(false);
+  const { overrides } = useExerciseGifOverrides();
 
   useEffect(() => {
     const query = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -523,14 +526,22 @@ export default function ExerciseAnimation({
     return () => query.removeEventListener('change', onChange);
   }, []);
 
-  // A real GIF, once one exists, always wins over the built-in illustration.
-  if (exercise.gif_url) {
+  const gifUrl = resolveGifUrl(exercise, overrides);
+  // Reset once the exercise or its link changes, so switching exercises (or
+  // a trainer just having saved a new link) gets a fresh attempt.
+  useEffect(() => setGifFailed(false), [gifUrl]);
+
+  // A real GIF, once one exists, always wins over the built-in illustration
+  // — unless it fails to load, in which case falling back to the stick
+  // figure beats showing a broken-image icon.
+  if (gifUrl && !gifFailed) {
     return (
       // eslint-disable-next-line @next/next/no-img-element -- author-supplied GIF
       <img
-        src={exercise.gif_url}
+        src={gifUrl}
         alt={`הדגמה: ${exercise.name} (${exercise.nameEn})`}
         className={cn('w-full rounded-xl object-cover', className)}
+        onError={() => setGifFailed(true)}
       />
     );
   }
@@ -538,7 +549,23 @@ export default function ExerciseAnimation({
   const movement = MOVEMENTS[exercise.animation];
   const animate = playing && !reduceMotion;
 
+  // A saved link that didn't embed (e.g. it points to a page rather than an
+  // image file) still deserves a way to reach it — the built-in animation
+  // shows underneath, with a link to open it instead of just losing it.
+  const brokenLinkNotice =
+    gifUrl && gifFailed ? (
+      <a
+        href={gifUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="absolute inset-x-2 bottom-2 flex items-center justify-center gap-1 rounded-lg bg-surface/90 px-2 py-1.5 text-xs font-medium text-accent shadow hover:underline"
+      >
+        פתיחת הקישור השמור בכרטיסייה חדשה
+      </a>
+    ) : null;
+
   return (
+    <div className="relative">
     <svg
       viewBox="0 0 120 100"
       className={cn('w-full text-ink', className)}
@@ -614,5 +641,7 @@ export default function ExerciseAnimation({
         ) : null}
       </g>
     </svg>
+    {brokenLinkNotice}
+    </div>
   );
 }

@@ -1,9 +1,11 @@
 'use client';
 
-import { Pause, Play, PlayCircle, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ExternalLink, Link2, Loader2, Pause, Play, PlayCircle, X } from 'lucide-react';
+import { useEffect, useState, useTransition } from 'react';
 
+import { removeExerciseGif, updateExerciseGif } from '@/app/actions';
 import ExerciseAnimation from '@/components/ExerciseAnimation';
+import { resolveGifUrl, useExerciseGifOverrides } from '@/components/ExerciseGifOverrides';
 import { Badge } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 import { findCategory } from '@/lib/catalog';
@@ -33,10 +35,13 @@ export function ExerciseDemoButton({
   exercise,
   variant = 'icon',
   className,
+  editableBy,
 }: {
   exercise: StrengthExercise;
   variant?: 'icon' | 'inline';
   className?: string;
+  /** Trainer's own user id — pass to let them paste/replace this exercise's GIF link. */
+  editableBy?: string;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -61,20 +66,121 @@ export function ExerciseDemoButton({
         {variant === 'inline' ? 'הדגמה' : null}
       </button>
 
-      {open ? <ExerciseDemoDialog exercise={exercise} onClose={() => setOpen(false)} /> : null}
+      {open ? (
+        <ExerciseDemoDialog exercise={exercise} onClose={() => setOpen(false)} editableBy={editableBy} />
+      ) : null}
     </>
+  );
+}
+
+/** Lets a trainer paste (or remove) a direct GIF link for this exercise — always wins over the auto-match. */
+function GifLinkEditor({ exercise, trainerId }: { exercise: StrengthExercise; trainerId: string }) {
+  const { overrides, refresh } = useExerciseGifOverrides();
+  const current = overrides[exercise.id] ?? '';
+  const [value, setValue] = useState(current);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => setValue(current), [current]);
+
+  const save = () => {
+    if (!value.trim()) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await updateExerciseGif(trainerId, exercise.id, value.trim());
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      refresh();
+    });
+  };
+
+  const remove = () => {
+    setError(null);
+    startTransition(async () => {
+      const result = await removeExerciseGif(trainerId, exercise.id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setValue('');
+      refresh();
+    });
+  };
+
+  return (
+    <div className="space-y-1.5 rounded-xl border border-line bg-elevated/50 p-3">
+      <label htmlFor={`gif-link-${exercise.id}`} className="flex items-center gap-1.5 text-xs font-medium text-muted">
+        <Link2 aria-hidden className="h-3.5 w-3.5" />
+        קישור להדגמה (מחליף את ההדגמה האוטומטית)
+      </label>
+      <div className="flex gap-2">
+        <input
+          id={`gif-link-${exercise.id}`}
+          className="input flex-1 text-sm"
+          placeholder="https://…"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          dir="ltr"
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={isPending || !value.trim()}
+          className="btn-primary px-3 py-1.5 text-xs disabled:opacity-40"
+        >
+          {isPending ? <Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" /> : 'שמירה'}
+        </button>
+        {current ? (
+          <button
+            type="button"
+            onClick={remove}
+            disabled={isPending}
+            className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-40"
+          >
+            הסרה
+          </button>
+        ) : null}
+      </div>
+      {error ? (
+        <p role="alert" className="text-xs text-rose-600 dark:text-rose-400">
+          {error}
+        </p>
+      ) : null}
+      {current ? (
+        <a
+          href={current}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+        >
+          <ExternalLink aria-hidden className="h-3 w-3" />
+          פתיחת הקישור השמור בכרטיסייה חדשה
+        </a>
+      ) : null}
+      <p className="text-[11px] leading-relaxed text-muted">
+        קישור לקובץ תמונה ישיר (למשל, מסתיים ב-gif.) יוצג כאן בתוך האפליקציה. קישור לדף אינטרנט רגיל
+        (לדוגמה סרטון יוטיוב או עמוד באתר) לא יוצג בתוך האפליקציה, אבל עדיין יישמר — כל מי שרואה את
+        התרגיל יוכל ללחוץ ולפתוח אותו בכרטיסייה חדשה.
+      </p>
+    </div>
   );
 }
 
 export function ExerciseDemoDialog({
   exercise,
   onClose,
+  editableBy,
 }: {
   exercise: StrengthExercise;
   onClose: () => void;
+  editableBy?: string;
 }) {
   const [playing, setPlaying] = useState(true);
+  const { overrides } = useExerciseGifOverrides();
   const category = findCategory(exercise.category);
+  const hasRealGif = Boolean(resolveGifUrl(exercise, overrides));
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -116,21 +222,23 @@ export function ExerciseDemoDialog({
           <div className="flex flex-wrap items-center gap-2">
             <LevelBadge level={exercise.level} />
             <Badge tone="neutral">{category?.name}</Badge>
-            <button
-              type="button"
-              onClick={() => setPlaying((current) => !current)}
-              className="btn-ghost ms-auto px-2 py-1 text-xs"
-            >
-              {playing ? (
-                <>
-                  <Pause aria-hidden className="h-3.5 w-3.5" /> עצירה
-                </>
-              ) : (
-                <>
-                  <Play aria-hidden className="h-3.5 w-3.5" /> הפעלה
-                </>
-              )}
-            </button>
+            {hasRealGif ? null : (
+              <button
+                type="button"
+                onClick={() => setPlaying((current) => !current)}
+                className="btn-ghost ms-auto px-2 py-1 text-xs"
+              >
+                {playing ? (
+                  <>
+                    <Pause aria-hidden className="h-3.5 w-3.5" /> עצירה
+                  </>
+                ) : (
+                  <>
+                    <Play aria-hidden className="h-3.5 w-3.5" /> הפעלה
+                  </>
+                )}
+              </button>
+            )}
           </div>
 
           <div className="rounded-xl bg-elevated p-3">
@@ -141,6 +249,8 @@ export function ExerciseDemoDialog({
           </div>
 
           <p className="text-xs text-muted">{LEVEL_LABELS[exercise.level].name}</p>
+
+          {editableBy ? <GifLinkEditor exercise={exercise} trainerId={editableBy} /> : null}
         </div>
       </div>
     </div>

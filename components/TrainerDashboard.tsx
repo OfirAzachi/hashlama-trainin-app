@@ -419,6 +419,7 @@ export default function TrainerDashboard({ snapshot, trainer }: { snapshot: Coho
           nextWeekIndex={nextWeekIndex}
           participantCount={participants.length}
           pastSessions={sessions}
+          trainerId={trainer.id}
         />
       ) : null}
 

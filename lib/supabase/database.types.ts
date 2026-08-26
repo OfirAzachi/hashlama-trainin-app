@@ -101,6 +101,24 @@ export type Database = {
         }
         Relationships: []
       }
+      exercise_gif_overrides: {
+        Row: {
+          exercise_id: string
+          gif_url: string
+          updated_at: string
+        }
+        Insert: {
+          exercise_id: string
+          gif_url: string
+          updated_at?: string
+        }
+        Update: {
+          exercise_id?: string
+          gif_url?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       media_comments: {
         Row: {
           body: string

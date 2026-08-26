@@ -227,6 +227,30 @@ export async function updateUserTeam(userId: string, team: GroupId | null): Prom
   if (error) throw error;
 }
 
+/* ------------------------------------------------ exercise gif overrides */
+
+/** Every trainer-pasted GIF link, keyed by exercise id — a pasted link always wins over the auto-match. */
+export async function getExerciseGifOverrides(): Promise<Record<string, string>> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from('exercise_gif_overrides').select('exercise_id, gif_url');
+  if (error) throw error;
+  return Object.fromEntries((data ?? []).map((row) => [row.exercise_id, row.gif_url]));
+}
+
+export async function setExerciseGifOverride(exerciseId: string, gifUrl: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from('exercise_gif_overrides')
+    .upsert({ exercise_id: exerciseId, gif_url: gifUrl, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
+export async function clearExerciseGifOverride(exerciseId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.from('exercise_gif_overrides').delete().eq('exercise_id', exerciseId);
+  if (error) throw error;
+}
+
 /**
  * Everyone who trains as part of a group — regular participants, plus any
  * trainer who has opted into a group themselves. Membership is defined by

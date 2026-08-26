@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 import { useTheme } from '@/app/providers';
+import { ExerciseGifOverridesProvider } from '@/components/ExerciseGifOverrides';
 import SignOutButton from '@/components/SignOutButton';
 import { cn } from '@/lib/cn';
 import type { Role } from '@/lib/types';
@@ -102,7 +103,7 @@ export default function AppShell({
           <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">{title}</h1>
           {subtitle ? <p className="mt-1 text-sm text-muted">{subtitle}</p> : null}
         </div>
-        {children}
+        <ExerciseGifOverridesProvider>{children}</ExerciseGifOverridesProvider>
       </main>
 
       <footer className="mx-auto max-w-7xl px-4 py-8 text-xs text-muted sm:px-6">

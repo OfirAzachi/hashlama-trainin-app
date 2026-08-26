@@ -305,11 +305,14 @@ export default function WeeklyTrainingBuilder({
   nextWeekIndex,
   participantCount,
   pastSessions = [],
+  trainerId,
 }: {
   nextWeekIndex: number;
   participantCount: number;
   /** Published sessions to optionally load as a starting point for a new one. */
   pastSessions?: TrainingSession[];
+  /** Lets the exercise demo dialog offer "paste a GIF link" for this trainer. */
+  trainerId: string;
 }) {
   const router = useRouter();
 
@@ -1505,7 +1508,7 @@ export default function WeeklyTrainingBuilder({
                         <p className="truncate text-xs text-muted">{exercise.nameEn}</p>
                       </div>
                       <LevelBadge level={exercise.level} />
-                      <ExerciseDemoButton exercise={exercise} />
+                      <ExerciseDemoButton exercise={exercise} editableBy={trainerId} />
                     </li>
                   );
                 })}
@@ -1552,7 +1555,7 @@ export default function WeeklyTrainingBuilder({
                         <p className="truncate text-xs text-muted">{exercise.nameEn}</p>
                       </div>
                       <LevelBadge level={exercise.level} />
-                      <ExerciseDemoButton exercise={exercise} />
+                      <ExerciseDemoButton exercise={exercise} editableBy={trainerId} />
                     </li>
                   ))}
               </ul>

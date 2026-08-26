@@ -3,8 +3,10 @@
 import { revalidatePath } from 'next/cache';
 
 import {
+  clearExerciseGifOverride,
   deleteMedia,
   deleteSession,
+  getExerciseGifOverrides,
   getMediaOwner,
   getUsers,
   getUsersByIds,
@@ -16,6 +18,7 @@ import {
   insertRunningEntries,
   insertStrengthEntries,
   sessionHasLogs,
+  setExerciseGifOverride,
   toggleLike,
   updateMediaCaption,
   updateSession,
@@ -365,6 +368,60 @@ export async function joinGroupAsTrainer(userId: string, team: GroupId | null): 
   revalidatePath('/participant');
   revalidatePath('/feed');
   return { ok: true, data: null };
+}
+
+/** Returns an error string if `userId` isn't authenticated as themselves and a trainer, else null. */
+async function requireTrainerAuth(userId: string): Promise<string | null> {
+  if (!supabaseConfigured) return null;
+  const supabase = await createClient();
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser();
+  if (!authUser || authUser.id !== userId) return 'אין הרשאה לבצע פעולה זו.';
+  const { data: profile } = await supabase.from('users').select('role').eq('id', authUser.id).maybeSingle();
+  if (profile?.role !== 'trainer') return 'הפעולה מוגבלת למאמן/ת.';
+  return null;
+}
+
+/**
+ * Lets a trainer point an exercise at a real GIF they found and pasted in —
+ * always wins over the ExerciseDB auto-match, which only ever covers
+ * exercises that happen to exist there under a recognisable name.
+ */
+export async function updateExerciseGif(
+  userId: string,
+  exerciseId: string,
+  gifUrl: string,
+): Promise<ActionResult<null>> {
+  if (!exerciseId) return { ok: false, error: 'חסר מזהה תרגיל.' };
+  const authError = await requireTrainerAuth(userId);
+  if (authError) return { ok: false, error: authError };
+
+  const trimmed = gifUrl.trim();
+  if (!/^https:\/\/\S+$/.test(trimmed)) {
+    return { ok: false, error: 'הכניסו קישור תקין שמתחיל ב-https://' };
+  }
+
+  await setExerciseGifOverride(exerciseId, trimmed);
+  revalidatePath('/trainer');
+  revalidatePath('/participant');
+  return { ok: true, data: null };
+}
+
+export async function removeExerciseGif(userId: string, exerciseId: string): Promise<ActionResult<null>> {
+  if (!exerciseId) return { ok: false, error: 'חסר מזהה תרגיל.' };
+  const authError = await requireTrainerAuth(userId);
+  if (authError) return { ok: false, error: authError };
+
+  await clearExerciseGifOverride(exerciseId);
+  revalidatePath('/trainer');
+  revalidatePath('/participant');
+  return { ok: true, data: null };
+}
+
+export async function fetchExerciseGifOverrides(): Promise<ActionResult<Record<string, string>>> {
+  const overrides = await getExerciseGifOverrides();
+  return { ok: true, data: overrides };
 }
 
 /* --------------------------------------------------------- social feed */
