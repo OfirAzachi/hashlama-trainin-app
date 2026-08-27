@@ -20,6 +20,7 @@ import {
   insertStrengthEntries,
   sessionHasLogs,
   setExerciseGifOverride,
+  updateSessionDate,
   toggleLike,
   updateMediaCaption,
   updateSession,
@@ -232,7 +233,14 @@ function validateSessionPlan(input: SessionPlanInput): Record<string, string> {
     }
   }
 
-  if (input.training_type !== 'running') {
+  if (input.training_type === 'log') {
+    // A plain prescribed-exercise list — no points, no rounds, just at
+    // least one field for the participant to fill.
+    const exercises = input.tracks.flatMap((track) => track.exercises);
+    if (exercises.length === 0) fieldErrors.tracks = 'הוסיפו לפחות תרגיל אחד.';
+  }
+
+  if (input.training_type !== 'running' && input.training_type !== 'log') {
     // A points game has no per-group tracks: everyone works through the same
     // interval structure, so what matters is that the game itself is set up.
     const config = input.points_game;
@@ -319,6 +327,24 @@ export async function updateTrainingSession(
     })),
   });
 
+  revalidatePath('/trainer');
+  revalidatePath('/participant');
+  return { ok: true, data: updated };
+}
+
+/**
+ * Moves a training to a different date — allowed no matter what, even once
+ * participants have logged results against it, unlike every other edit.
+ * Changing the date never disagrees with an already-recorded result.
+ */
+export async function updateTrainingSessionDate(
+  sessionId: string,
+  date: string,
+): Promise<ActionResult<TrainingSession>> {
+  if (!sessionId) return { ok: false, error: 'חסר מזהה אימון.' };
+  if (!date) return { ok: false, error: 'בחרו תאריך.' };
+
+  const updated = await updateSessionDate(sessionId, date);
   revalidatePath('/trainer');
   revalidatePath('/participant');
   return { ok: true, data: updated };

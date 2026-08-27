@@ -132,7 +132,9 @@ export default function TrainingsList({
     const done = card.status === 'completed';
     const type = card.session.training_type;
     const isRunning = type === 'running';
-    const strength = !isRunning; // every non-running type is a points game
+    // 'log' trainings are non-running but have no points game either — a
+    // plain prescribed-exercise list (see `card.track` below), not a round.
+    const strength = !isRunning && Boolean(card.session.points_game);
 
     return (
       <Card key={card.session.id} as="li" className="overflow-hidden">
@@ -157,6 +159,10 @@ export default function TrainingsList({
                   ) : type === 'cooldown' ? (
                     <>
                       <Wind aria-hidden className="h-3 w-3" /> {CATALOG_META.cooldown.label} · נקודות
+                    </>
+                  ) : type === 'log' ? (
+                    <>
+                      <ListChecks aria-hidden className="h-3 w-3" /> אימון נוסף
                     </>
                   ) : (
                     <>

@@ -342,16 +342,22 @@ export type { CategoryId, StrengthLevel, StrengthUnit } from './strength-catalog
 
 /** Aerobic trainings prescribe exercises; strength trainings are a points game. */
 /**
- * Five kinds of weekly training:
+ * Six kinds of weekly training:
  *   running   — segments at prescribed paces (intervals or one steady run)
  *   endurance — a points game built from heart-rate raising exercises
  *   strength  — a points game built from the muscle catalogue
  *   warmup    — a points game built from dynamic stretches / pulse raisers
  *   cooldown  — a points game built from static stretches
+ *   log       — a plain prescribed-exercise list with no points and no
+ *               interval timing, filled with a number per exercise — used
+ *               for the "simple running" (distance + time) and "sets of
+ *               pushups" (one field per set) presets. No group-specific
+ *               tracks: one 'all' track covers every participant.
  * The four game types share the same interval/points machinery — only the
- * catalogue they draw exercises from differs.
+ * catalogue they draw exercises from differs. `log` reuses the older
+ * prescribed-exercise mechanism (`tracks`) instead.
  */
-export type TrainingType = 'running' | 'endurance' | 'strength' | 'warmup' | 'cooldown';
+export type TrainingType = 'running' | 'endurance' | 'strength' | 'warmup' | 'cooldown' | 'log';
 
 /** running is the only non-game (segment-based) type. */
 export const AEROBIC_TYPES: TrainingType[] = ['running', 'endurance'];

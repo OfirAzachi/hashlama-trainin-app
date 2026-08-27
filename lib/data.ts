@@ -661,6 +661,24 @@ export async function sessionHasLogs(sessionId: string): Promise<boolean> {
 }
 
 /**
+ * Moves a published training to a different calendar date — deliberately
+ * exempt from the "no logs yet" lock that guards every other edit, since
+ * changing the date never disagrees with a result someone already recorded
+ * (unlike changing the exercises, categories or timing). Used for
+ * back-dating a late submission or correcting a mis-scheduled week.
+ */
+export async function updateSessionDate(sessionId: string, date: string): Promise<TrainingSession> {
+  const supabase = await createClient();
+  const { error } = await supabase.from('training_sessions').update({ date }).eq('id', sessionId);
+  if (error) throw error;
+
+  const updated = await getSessions();
+  const match = updated.find((session) => session.id === sessionId);
+  if (!match) throw new Error('Session date was updated but could not be re-fetched.');
+  return match;
+}
+
+/**
  * Replaces a session's structure in place — only ever called once the
  * caller has confirmed nobody has logged against it yet, so clearing the
  * old segments/rounds/tracks and reinserting is safe.
@@ -988,7 +1006,9 @@ export async function getTrainingCards(userId: string): Promise<TrainingCard[]> 
       const strengthLogs = strengthLogsAll.filter((log) => log.session_id === session.id);
       const runningLogs = runningLogsAll.filter((log) => log.session_id === session.id);
       const isRunning = session.training_type === 'running';
-      const strength = !isRunning; // every non-running type is a points game
+      // 'log' trainings are non-running but have no points game either — a
+      // plain prescribed-exercise list, same mechanism as `track` below.
+      const strength = !isRunning && Boolean(session.points_game);
       const uploaded = isRunning
         ? runningLogs.length + sessionLogs.length
         : strength

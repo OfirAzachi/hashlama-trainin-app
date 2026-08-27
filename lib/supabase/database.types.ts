@@ -941,6 +941,7 @@ export type Database = {
         | "strength"
         | "warmup"
         | "cooldown"
+        | "log"
       user_role: "trainer" | "participant"
     }
     CompositeTypes: {
@@ -1095,7 +1096,7 @@ export const Constants = {
       ],
       strength_unit: ["reps", "seconds", "meters"],
       test_type: ["initial", "final"],
-      training_type: ["running", "endurance", "strength", "warmup", "cooldown"],
+      training_type: ["running", "endurance", "strength", "warmup", "cooldown", "log"],
       user_role: ["trainer", "participant"],
     },
   },
