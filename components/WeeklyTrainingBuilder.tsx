@@ -169,12 +169,19 @@ const TYPE_CARDS: Array<{
 const isGameType = (type: TrainingType) => type !== 'running' && type !== 'log';
 
 /**
+ * Pushups don't have a trainer-fixed set count — the participant decides how
+ * many sets to log, revealing fields one at a time in their own logger. This
+ * is just the ceiling on pre-created fields to reveal from, generous enough
+ * nobody realistically hits it.
+ */
+const PUSHUP_SET_CEILING = 12;
+
+/**
  * Builds the plain field-per-exercise list for a 'log' training — one 'all'
  * track so every participant sees the same thing, regardless of team.
  */
 function buildLogTracks(
   preset: 'running' | 'pushups',
-  sets: number,
 ): Array<{ target_group: SessionTarget; label: string; exercises: Array<Omit<ExercisePrescription, 'id'>> }> {
   const exercises: Array<Omit<ExercisePrescription, 'id'>> =
     preset === 'running'
@@ -182,7 +189,7 @@ function buildLogTracks(
           { name: 'מרחק', metric_type: 'distance_meters', prescription: 'כמה רצתם, במטרים', target_value: null },
           { name: 'זמן ריצה', metric_type: 'time_seconds', prescription: 'כמה זמן לקח, בפורמט דק:שנ', target_value: null },
         ]
-      : Array.from({ length: Math.max(1, sets) }, (_, index) => ({
+      : Array.from({ length: PUSHUP_SET_CEILING }, (_, index) => ({
           name: `סט ${index + 1}`,
           metric_type: 'reps' as const,
           prescription: 'כמה חזרות בסט הזה',
@@ -394,7 +401,6 @@ export default function WeeklyTrainingBuilder({
   const [segments, setSegments] = useState<SegmentDraft[]>([blankSegment()]);
   /** 'log' training presets — a plain field-per-exercise list, no points/timer. */
   const [logPreset, setLogPreset] = useState<'running' | 'pushups'>('running');
-  const [pushupSets, setPushupSets] = useState(3);
   const [defaultWork, setDefaultWork] = useState(40);
   const [defaultRest, setDefaultRest] = useState(20);
   const [roundCategories, setRoundCategories] = useState<CategoryId[]>(() =>
@@ -430,7 +436,7 @@ export default function WeeklyTrainingBuilder({
       ? roundExerciseIds.length > 0
       : roundCategories.length > 0 && openLevels.length > 0
     : trainingType === 'log'
-      ? logPreset === 'running' || pushupSets > 0
+      ? true
       : validSegments.length > 0;
   const roundsTotal = fixedExercises ? roundExerciseIds.length : roundCategories.length;
 
@@ -541,7 +547,6 @@ export default function WeeklyTrainingBuilder({
       const exercises = source.tracks?.[0]?.exercises ?? [];
       const isPushups = exercises.some((exercise) => exercise.metric_type === 'reps');
       setLogPreset(isPushups ? 'pushups' : 'running');
-      if (isPushups) setPushupSets(Math.max(1, exercises.length));
     }
 
     if (source.training_type === 'running' && source.running) {
@@ -631,7 +636,6 @@ export default function WeeklyTrainingBuilder({
     setRunMode('intervals');
     setSegments([blankSegment()]);
     setLogPreset('running');
-    setPushupSets(3);
   };
 
   /** Builds the add/remove/update handlers for an attached warm-up/cool-down round list. */
@@ -709,7 +713,7 @@ export default function WeeklyTrainingBuilder({
         // running carries its plan in segments, and a points game has
         // everyone pick their own exercise each round. 'log' is the one
         // type that does use tracks — built from the chosen preset.
-        tracks: trainingType === 'log' ? buildLogTracks(logPreset, pushupSets) : [],
+        tracks: trainingType === 'log' ? buildLogTracks(logPreset) : [],
       };
 
       const result = editingSessionId
@@ -1514,38 +1518,11 @@ export default function WeeklyTrainingBuilder({
           </Card>
 
           {logPreset === 'pushups' ? (
-            <Card className="card-pad space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-ink">כמה סטים?</h3>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="btn-secondary h-9 w-9 p-0"
-                    aria-label="הפחתת סט"
-                    onClick={() => setPushupSets((current) => Math.max(1, current - 1))}
-                  >
-                    <Minus aria-hidden className="h-4 w-4" />
-                  </button>
-                  <span className="w-6 text-center text-sm font-semibold tnum text-ink">{pushupSets}</span>
-                  <button
-                    type="button"
-                    className="btn-secondary h-9 w-9 p-0"
-                    aria-label="הוספת סט"
-                    onClick={() => setPushupSets((current) => Math.min(20, current + 1))}
-                  >
-                    <Plus aria-hidden className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-              <ul className="flex flex-wrap gap-1.5">
-                {Array.from({ length: pushupSets }, (_, index) => (
-                  <li key={index} className="rounded-full bg-elevated px-3 py-1 text-xs text-muted">
-                    סט {index + 1}
-                  </li>
-                ))}
-              </ul>
+            <Card className="card-pad space-y-2">
+              <h3 className="text-sm font-semibold text-ink">מספר הסטים נקבע על ידי כל מתאמן/ת</h3>
               <p className="text-xs text-muted">
-                כל מתאמן/ת יראה/תראה שדה נפרד לכל סט, וימלא/תמלא כמה חזרות ביצע/ה בו.
+                אין צורך לקבוע מראש כמה סטים — בעמוד הרישום יש כפתור "הוספת סט" שמוסיף שדה בכל פעם, וכל אחד/ת
+                מוסיף/ה כמה שהוא/היא בפועל ביצע/ה.
               </p>
             </Card>
           ) : (
