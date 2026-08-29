@@ -170,6 +170,7 @@ export default function TrainingsList({
                     </>
                   )}
                 </Badge>
+                {type === 'log' ? <Badge tone="warning">אופציונלי</Badge> : null}
               </p>
             </div>
 
