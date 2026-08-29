@@ -835,7 +835,6 @@ function Composer({ viewer, sessions, users }: { viewer: User; sessions: Trainin
         ref={fileRef}
         type="file"
         accept={ALLOWED_FILE_TYPES.join(',')}
-        capture="environment"
         className="sr-only"
         id="feed-photo"
         onChange={(event) => pick(event.target.files?.[0])}
