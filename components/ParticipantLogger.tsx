@@ -114,33 +114,6 @@ export default function ParticipantLogger({
 
   const alreadyLogged = new Set(existingLogs.map((log) => log.exercise_name));
 
-  // Pushup sets: the trainer doesn't fix a set count — a generous number of
-  // "סט N" fields exist behind the scenes (see buildLogTracks), and each
-  // participant reveals however many they actually want with "+ הוספת סט".
-  const isDynamicSets = track?.label === 'שכיבות סמיכה';
-  const [visibleSetCount, setVisibleSetCount] = useState(() => {
-    if (!isDynamicSets) return exercises.length;
-    const loggedCount = exercises.filter((exercise) => alreadyLogged.has(exercise.name)).length;
-    return Math.min(exercises.length, Math.max(3, loggedCount));
-  });
-  const visibleExercises = isDynamicSets ? exercises.slice(0, visibleSetCount) : exercises;
-
-  const addSet = () => setVisibleSetCount((current) => Math.min(exercises.length, current + 1));
-  const removeLastSet = () => {
-    setVisibleSetCount((current) => {
-      if (current <= 1) return current;
-      const removed = exercises[current - 1];
-      if (removed) {
-        setDrafts((currentDrafts) => {
-          const next = { ...currentDrafts };
-          delete next[removed.id];
-          return next;
-        });
-      }
-      return current - 1;
-    });
-  };
-
   const setRaw = (exerciseId: string, raw: string) =>
     setDrafts((current) => ({ ...current, [exerciseId]: { raw, touched: true } }));
 
@@ -288,7 +261,7 @@ export default function ParticipantLogger({
             logMutation.mutate();
           }}
         >
-          {visibleExercises.map((exercise) => {
+          {exercises.map((exercise) => {
             const draft = drafts[exercise.id]?.raw ?? '';
             const logged = alreadyLogged.has(exercise.name);
 
@@ -364,29 +337,6 @@ export default function ParticipantLogger({
               </div>
             );
           })}
-
-          {isDynamicSets ? (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="btn-secondary flex-1"
-                onClick={addSet}
-                disabled={visibleSetCount >= exercises.length}
-              >
-                <Plus aria-hidden className="h-4 w-4" />
-                הוספת סט
-              </button>
-              {visibleSetCount > 1 ? (
-                <button
-                  type="button"
-                  className="btn-ghost px-3 py-2 text-xs text-rose-500"
-                  onClick={removeLastSet}
-                >
-                  הסרת הסט האחרון
-                </button>
-              ) : null}
-            </div>
-          ) : null}
 
           {/* ------------------------------------------------------- RPE */}
           <div className="space-y-2">

@@ -26,6 +26,8 @@ export async function getCurrentUser(): Promise<User | null> {
     avatar_url: data.avatar_url,
     joined_at: data.joined_at,
     km_levels: data.km_levels ?? [],
+    gender: (data.gender as 'ז' | 'נ' | null) ?? null,
+    bonus_points: data.bonus_points ?? 0,
   };
 }
 

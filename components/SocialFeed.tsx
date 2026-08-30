@@ -26,6 +26,7 @@ import { useRouter } from 'next/navigation';
 
 import {
   addMediaComment,
+  deleteMediaComment,
   deleteMediaPost,
   toggleMediaLike,
   updateMediaPost,
@@ -489,7 +490,6 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
         likedByMe: !likeState.likedByMe,
       });
       await toggleMediaLike(post.media.id, viewer.id);
-      startTransition(() => router.refresh());
     });
   };
 
@@ -503,8 +503,14 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
       const result = await addMediaComment(post.media.id, viewer.id, finalBody);
       if (result.ok) {
         setComments((current) => [...current, { comment: result.data, author: viewer }]);
-        startTransition(() => router.refresh());
       }
+    });
+  };
+
+  const onDeleteComment = (commentId: string) => {
+    setComments((current) => current.filter((entry) => entry.comment.id !== commentId));
+    startTransition(async () => {
+      await deleteMediaComment(commentId, viewer.id);
     });
   };
 
@@ -682,7 +688,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
 
       {/* comments */}
       {comments.length > 0 ? (
-        <div className="space-y-1.5 px-4 pb-2">
+        <div className="space-y-1.5 border-t border-line px-4 pb-2 pt-2">
           {comments.length > 2 && !showAllComments ? (
             <button
               type="button"
@@ -695,13 +701,25 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
 
           <ul className="space-y-1.5">
             {visibleComments.map(({ comment, author }) => (
-              <li key={comment.id} className="text-sm">
-                <span className="font-semibold text-ink">{author.name.split(' ')[0]}</span>{' '}
-                <span className="text-ink/90">{renderCommentBody(comment.body)}</span>
-                {author.role === 'trainer' ? (
-                  <Badge tone="accent" className="ms-1.5 align-middle">
-                    מאמנת
-                  </Badge>
+              <li key={comment.id} className="flex items-start justify-between gap-2 text-sm">
+                <span>
+                  <span className="font-semibold text-ink">{author.name.split(' ')[0]}</span>{' '}
+                  <span className="text-ink/90">{renderCommentBody(comment.body)}</span>
+                  {author.role === 'trainer' ? (
+                    <Badge tone="accent" className="ms-1.5 align-middle">
+                      מאמנת
+                    </Badge>
+                  ) : null}
+                </span>
+                {author.id === viewer.id ? (
+                  <button
+                    type="button"
+                    onClick={() => onDeleteComment(comment.id)}
+                    aria-label="מחיקת התגובה"
+                    className="btn-ghost h-6 w-6 shrink-0 p-0 text-muted hover:text-rose-500"
+                  >
+                    <Trash2 aria-hidden className="h-3.5 w-3.5" />
+                  </button>
                 ) : null}
               </li>
             ))}
@@ -744,7 +762,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
           disabled={!draft.trim() || isPending}
           className="btn-ghost px-3 py-1.5 text-accent disabled:opacity-40"
         >
-          {isPending ? <Loader2 aria-hidden className="h-4 w-4 animate-spin" /> : 'פרסום'}
+          פרסום
         </button>
       </div>
     </Card>

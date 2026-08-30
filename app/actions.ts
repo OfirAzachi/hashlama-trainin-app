@@ -4,8 +4,10 @@ import { revalidatePath } from 'next/cache';
 
 import {
   clearExerciseGifOverride,
+  deleteComment,
   deleteMedia,
   deleteSession,
+  getCommentOwner,
   getExerciseGifOverrides,
   getMediaOwner,
   getSessionTemplates,
@@ -233,14 +235,7 @@ function validateSessionPlan(input: SessionPlanInput): Record<string, string> {
     }
   }
 
-  if (input.training_type === 'log') {
-    // A plain prescribed-exercise list — no points, no rounds, just at
-    // least one field for the participant to fill.
-    const exercises = input.tracks.flatMap((track) => track.exercises);
-    if (exercises.length === 0) fieldErrors.tracks = 'הוסיפו לפחות תרגיל אחד.';
-  }
-
-  if (input.training_type !== 'running' && input.training_type !== 'log') {
+  if (input.training_type !== 'running') {
     // A points game has no per-group tracks: everyone works through the same
     // interval structure, so what matters is that the game itself is set up.
     const config = input.points_game;
@@ -553,6 +548,29 @@ export async function deleteMediaPost(mediaId: string, userId: string): Promise<
   revalidatePath('/feed');
   revalidatePath('/participant');
   revalidatePath('/trainer');
+  return { ok: true, data: null };
+}
+
+/** The comment's own author may delete it. */
+export async function deleteMediaComment(commentId: string, userId: string): Promise<ActionResult<null>> {
+  if (!commentId || !userId) return { ok: false, error: 'חסרה תגובה או משתמש.' };
+
+  const owner = await getCommentOwner(commentId);
+  if (!owner) return { ok: false, error: 'התגובה לא נמצאה.' };
+  if (owner.user_id !== userId) return { ok: false, error: 'ניתן למחוק רק תגובות שכתבתם.' };
+
+  if (supabaseConfigured) {
+    const supabase = await createClient();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    if (!authUser || authUser.id !== userId) {
+      return { ok: false, error: 'אין הרשאה למחוק תגובה זו.' };
+    }
+  }
+
+  await deleteComment(commentId);
+  revalidatePath('/feed');
   return { ok: true, data: null };
 }
 

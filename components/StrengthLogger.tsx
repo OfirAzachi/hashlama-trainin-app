@@ -26,7 +26,7 @@ import { Badge, Card, CardHeader, ProgressBar } from '@/components/ui/primitives
 import { submitStrengthWorkout } from '@/app/actions';
 import { cn } from '@/lib/cn';
 import { formatDate, formatDuration } from '@/lib/format';
-import { repsFromRaw } from '@/lib/points';
+import { genderMultiplier, repsFromRaw } from '@/lib/points';
 import {
   CATALOG_META,
   catalogCategories,
@@ -344,20 +344,15 @@ export default function StrengthLogger({
           return { exercise, reps: 0, points: 0 };
         }
         const reps = repsFromRaw(exercise, raw);
-        return { exercise, reps, points: reps * exercise.level };
+        return { exercise, reps, points: Math.round(reps * exercise.level * genderMultiplier(participant.gender)) };
       }),
-    [drafts, fixedExercises],
+    [drafts, fixedExercises, participant.gender],
   );
 
-  const isDone = (index: number) => drafts[index]?.raw !== '';
-  const toggleDone = (index: number) =>
-    setDrafts((current) =>
-      current.map((draft, i) => (i === index ? { ...draft, raw: draft.raw ? '' : '1' } : draft)),
-    );
-
   const myTotal = scored.reduce((sum, entry) => sum + entry.points, 0);
+  const alreadyCompleted = fixedExercises && myLogs.length > 0;
   const filled = fixedExercises
-    ? drafts.filter((_, index) => isDone(index)).length
+    ? (alreadyCompleted ? drafts.length : 0)
     : scored.filter((entry) => entry.points > 0).length;
 
   const setRaw = (index: number, raw: string) =>
@@ -388,33 +383,25 @@ export default function StrengthLogger({
     mutationFn: async () => {
       const entries = drafts
         .map((draft, index) => ({ draft, index }))
-        .filter(({ draft }) => draft.exerciseId && (fixedExercises ? draft.raw !== '' : Number(draft.raw) > 0))
+        .filter(({ draft }) => draft.exerciseId && Number(draft.raw) > 0)
         .map(({ draft, index }) => ({
           session_id: session.id,
           user_id: participant.id,
           round_index: index,
           exercise_id: draft.exerciseId!,
-          // Warm-up/cool-down: a sub-unit value floors to 0 reps (and so 0
-          // points) server-side — "done" is recorded without scoring it.
-          raw_value: fixedExercises ? 0.001 : Number(draft.raw),
+          raw_value: Number(draft.raw),
         }));
 
       if (entries.length === 0) {
-        throw new Error(
-          fixedExercises ? 'סמנו לפחות תרגיל אחד כבוצע לפני השמירה.' : 'בחרו תרגיל ורשמו מה ביצעתם לפחות בסבב אחד.',
-        );
+        throw new Error('בחרו תרגיל ורשמו מה ביצעתם לפחות בסבב אחד.');
       }
 
-      // Everyone must fill every exercise before submitting — except a
+      // Everyone must fill every round before submitting — except a
       // participant with an active כמ (operational-fitness) exemption, who
       // may still submit with some left blank.
       const isKamExempt = participant.km_levels.length > 0;
       if (!isKamExempt && entries.length < drafts.length) {
-        throw new Error(
-          fixedExercises
-            ? 'יש לסמן את כל התרגילים כבוצעו לפני השליחה. מי שבמצב כמ יכול לדלג על תרגילים.'
-            : 'יש למלא את כל הסבבים לפני השליחה. מי שבמצב כמ יכול לדלג על סבבים.',
-        );
+        throw new Error('יש למלא את כל הסבבים לפני השליחה. מי שבמצב כמ יכול לדלג על סבבים.');
       }
 
       const result = await submitStrengthWorkout(entries);
@@ -423,10 +410,44 @@ export default function StrengthLogger({
     },
     onSuccess: (created) => {
       setError(null);
-      setSaved(fixedExercises ? created.length : created.reduce((sum, log) => sum + log.points, 0));
+      setSaved(created.reduce((sum, log) => sum + log.points, 0));
       startTransition(() => router.refresh());
       if (onFinished) {
         // Give the "האימון הושלם" confirmation a moment on screen before leaving.
+        window.setTimeout(onFinished, 1200);
+      }
+    },
+    onError: (mutationError: Error) => {
+      setSaved(null);
+      setError(mutationError.message);
+    },
+  });
+
+  /**
+   * Warm-up/cool-down has no scoring and no participant choice — one tap
+   * logs every exercise the trainer set for this training, so nobody has to
+   * step through them individually.
+   */
+  const completeAll = useMutation({
+    mutationFn: async () => {
+      if (!config) throw new Error('לאימון הזה לא הוגדר משחק נקודות.');
+      const entries = config.round_exercise_ids.map((exerciseId, index) => ({
+        session_id: session.id,
+        user_id: participant.id,
+        round_index: index,
+        exercise_id: exerciseId,
+        raw_value: 0.001,
+      }));
+      const result = await submitStrengthWorkout(entries);
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
+    },
+    onSuccess: (created) => {
+      setError(null);
+      setSaved(created.length);
+      setDrafts((current) => current.map((draft) => ({ ...draft, raw: draft.raw || '1' })));
+      startTransition(() => router.refresh());
+      if (onFinished) {
         window.setTimeout(onFinished, 1200);
       }
     },
@@ -473,7 +494,7 @@ export default function StrengthLogger({
 
           <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs text-accent">
             {fixedExercises
-              ? 'עוברים על כל תרגיל בקצב שלכם ומסמנים כבוצע — בלי טיימר ובלי ניקוד, זה רק חלק מהמעקב על ההשלמה של האימון.'
+              ? 'אלה התרגילים לאימון — אין צורך לסמן כל אחד בנפרד. עברו עליהם ולחצו על "סימון האימון כהושלם" בסוף.'
               : 'נקודות = חזרות × רמה. בתרגילים סטטיים: כל 5 שניות = חזרה אחת. זחילת דוב: כל 2 מטר = חזרה אחת.'}
           </p>
           {fixedExercises ? null : (
@@ -481,6 +502,9 @@ export default function StrengthLogger({
               הטיימר הוא כלי עזר בלבד — לא חובה להפעיל אותו. אפשר למלא מספרים ולסיים את האימון בכל שלב.
             </p>
           )}
+          {!fixedExercises && participant.gender === 'נ' ? (
+            <p className="text-[11px] text-accent">הניקוד שלך כולל מכפיל ×1.5.</p>
+          ) : null}
         </div>
       </Card>
 
@@ -508,7 +532,7 @@ export default function StrengthLogger({
               <Card
                 className={cn(
                   'overflow-hidden',
-                  (fixedExercises ? isDone(index) : entry.points > 0) && 'border-emerald-500/40',
+                  (fixedExercises ? alreadyCompleted : entry.points > 0) && 'border-emerald-500/40',
                 )}
               >
                 <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2.5">
@@ -516,14 +540,12 @@ export default function StrengthLogger({
                     {fixedExercises ? `תרגיל ${index + 1}` : `סבב ${index + 1}`}
                   </p>
                   {fixedExercises ? (
-                    isDone(index) ? (
+                    alreadyCompleted ? (
                       <Badge tone="positive">
                         <CheckCircle2 aria-hidden className="h-3.5 w-3.5" />
                         בוצע
                       </Badge>
-                    ) : (
-                      <Badge tone="neutral">טרם בוצע</Badge>
-                    )
+                    ) : null
                   ) : entry.points > 0 ? (
                     <Badge tone="positive">
                       <CheckCircle2 aria-hidden className="h-3.5 w-3.5" />
@@ -575,21 +597,7 @@ export default function StrengthLogger({
                       <ExerciseDemoButton exercise={exercise} />
                     </div>
 
-                    {fixedExercises ? (
-                      <button
-                        type="button"
-                        onClick={() => toggleDone(index)}
-                        className={cn(
-                          'flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium transition-colors',
-                          isDone(index)
-                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                            : 'btn-secondary',
-                        )}
-                      >
-                        <CheckCircle2 aria-hidden className="h-4 w-4" />
-                        {isDone(index) ? 'בוצע — לחצו לביטול' : 'סימון כבוצע'}
-                      </button>
-                    ) : (
+                    {fixedExercises ? null : (
                       <>
                         <div className="flex items-center gap-2">
                           <button
@@ -687,10 +695,9 @@ export default function StrengthLogger({
         </p>
       ) : null}
 
-      {participant.km_levels.length === 0 && filled < drafts.length ? (
+      {!fixedExercises && participant.km_levels.length === 0 && filled < drafts.length ? (
         <p className="text-xs text-muted">
-          {fixedExercises ? 'יש לסמן את כל התרגילים כבוצעו לפני השליחה.' : 'יש למלא את כל הסבבים לפני השליחה.'}{' '}
-          מי שבמצב כמ יכול לשלוח גם אם חלק לא מולא.
+          יש למלא את כל הסבבים לפני השליחה. מי שבמצב כמ יכול לשלוח גם אם חלק לא מולא.
         </p>
       ) : null}
 
@@ -713,19 +720,42 @@ export default function StrengthLogger({
             </div>
           </div>
 
-          <button
-            type="button"
-            className="btn-primary ms-auto"
-            onClick={() => save.mutate()}
-            disabled={save.isPending}
-          >
-            {save.isPending ? (
-              <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+          {fixedExercises ? (
+            alreadyCompleted ? (
+              <Badge tone="positive" className="ms-auto">
+                <CheckCircle2 aria-hidden className="h-3.5 w-3.5" />
+                האימון הושלם
+              </Badge>
             ) : (
-              <Save aria-hidden className="h-4 w-4" />
-            )}
-            {save.isPending ? 'מסיים…' : 'סיום האימון'}
-          </button>
+              <button
+                type="button"
+                className="btn-primary ms-auto"
+                onClick={() => completeAll.mutate()}
+                disabled={completeAll.isPending}
+              >
+                {completeAll.isPending ? (
+                  <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 aria-hidden className="h-4 w-4" />
+                )}
+                {completeAll.isPending ? 'מסיים…' : 'סימון האימון כהושלם'}
+              </button>
+            )
+          ) : (
+            <button
+              type="button"
+              className="btn-primary ms-auto"
+              onClick={() => save.mutate()}
+              disabled={save.isPending}
+            >
+              {save.isPending ? (
+                <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save aria-hidden className="h-4 w-4" />
+              )}
+              {save.isPending ? 'מסיים…' : 'סיום האימון'}
+            </button>
+          )}
         </div>
       </div>
 

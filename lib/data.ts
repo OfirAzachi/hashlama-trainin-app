@@ -66,6 +66,8 @@ function mapUser(row: any): User {
     avatar_url: row.avatar_url,
     joined_at: row.joined_at,
     km_levels: row.km_levels ?? [],
+    gender: row.gender ?? null,
+    bonus_points: row.bonus_points ?? 0,
   };
 }
 
@@ -158,6 +160,7 @@ function mapSession(row: any): TrainingSession {
     points_game,
     running,
     tracks,
+    is_optional: row.is_optional ?? false,
   };
 }
 
@@ -563,6 +566,7 @@ export async function insertSession(input: SessionPlanInput): Promise<TrainingSe
       workout_instructions: input.workout_instructions,
       week_index: input.week_index,
       training_type: input.training_type,
+      is_optional: input.is_optional ?? false,
       created_by: authUser?.id ?? null,
     })
     .select()
@@ -694,6 +698,7 @@ export async function updateSession(sessionId: string, input: SessionPlanInput):
       workout_instructions: input.workout_instructions,
       week_index: input.week_index,
       training_type: input.training_type,
+      is_optional: input.is_optional ?? false,
     })
     .eq('id', sessionId);
   if (sessionError) throw sessionError;
@@ -890,6 +895,19 @@ export async function insertComment(
   };
 }
 
+/** Owner of a comment, to check permission before a delete. */
+export async function getCommentOwner(commentId: string): Promise<{ user_id: string } | null> {
+  const supabase = await createClient();
+  const { data } = await supabase.from('media_comments').select('user_id').eq('id', commentId).maybeSingle();
+  return data ?? null;
+}
+
+export async function deleteComment(commentId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.from('media_comments').delete().eq('id', commentId);
+  if (error) throw error;
+}
+
 /* ----------------------------------------------------- mailbox / mentions */
 
 /** Notification rows for @mentions found in a just-posted comment, or (commentId null) a post caption. */
@@ -1006,8 +1024,9 @@ export async function getTrainingCards(userId: string): Promise<TrainingCard[]> 
       const strengthLogs = strengthLogsAll.filter((log) => log.session_id === session.id);
       const runningLogs = runningLogsAll.filter((log) => log.session_id === session.id);
       const isRunning = session.training_type === 'running';
-      // 'log' trainings are non-running but have no points game either — a
-      // plain prescribed-exercise list, same mechanism as `track` below.
+      // Defensive: every non-running type carries a points_game today, but
+      // don't assume it — a tracks-only non-running session (older data, or
+      // a future type) falls through to the plain track-completion count.
       const strength = !isRunning && Boolean(session.points_game);
       const uploaded = isRunning
         ? runningLogs.length + sessionLogs.length
@@ -1248,6 +1267,12 @@ export async function getHomeHighlights(): Promise<HomeHighlights> {
   [...strengthLogs, ...runningLogs].forEach((log) => {
     pointsByUser.set(log.user_id, (pointsByUser.get(log.user_id) ?? 0) + log.points);
   });
+  // Manual catch-up bonuses count toward a participant's total too.
+  participants.forEach((participant) => {
+    if (participant.bonus_points) {
+      pointsByUser.set(participant.id, (pointsByUser.get(participant.id) ?? 0) + participant.bonus_points);
+    }
+  });
 
   const topScorers = participants
     .map((participant) => ({ participant, points: pointsByUser.get(participant.id) ?? 0 }))
@@ -1317,7 +1342,8 @@ export async function getHomeHighlights(): Promise<HomeHighlights> {
       trainings: sessions.length,
       points:
         strengthLogs.reduce((sum, log) => sum + log.points, 0) +
-        runningLogs.reduce((sum, log) => sum + log.points, 0),
+        runningLogs.reduce((sum, log) => sum + log.points, 0) +
+        participants.reduce((sum, participant) => sum + participant.bonus_points, 0),
       kilometres,
       photos: media.length,
     },

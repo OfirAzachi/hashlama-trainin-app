@@ -816,6 +816,7 @@ export type Database = {
           created_by: string | null
           date: string
           id: string
+          is_optional: boolean
           target_team: number | null
           title: string
           training_type: Database["public"]["Enums"]["training_type"]
@@ -827,6 +828,7 @@ export type Database = {
           created_by?: string | null
           date: string
           id?: string
+          is_optional?: boolean
           target_team?: number | null
           title: string
           training_type?: Database["public"]["Enums"]["training_type"]
@@ -838,6 +840,7 @@ export type Database = {
           created_by?: string | null
           date?: string
           id?: string
+          is_optional?: boolean
           target_team?: number | null
           title?: string
           training_type?: Database["public"]["Enums"]["training_type"]
@@ -857,6 +860,7 @@ export type Database = {
       users: {
         Row: {
           avatar_url: string | null
+          bonus_points: number
           created_at: string
           email: string
           final_run_seconds: number | null
@@ -873,6 +877,7 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          bonus_points?: number
           created_at?: string
           email: string
           final_run_seconds?: number | null
@@ -889,6 +894,7 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          bonus_points?: number
           created_at?: string
           email?: string
           final_run_seconds?: number | null

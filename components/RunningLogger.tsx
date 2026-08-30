@@ -93,9 +93,9 @@ export default function RunningLogger({
         if (!Number.isFinite(repeats) || repeats < 1) {
           return { segment, repeats: 0, score: null };
         }
-        return { segment, repeats, score: scoreSegment(segment, repeats) };
+        return { segment, repeats, score: scoreSegment(segment, repeats, participant.gender) };
       }),
-    [segments, repeatsById],
+    [segments, repeatsById, participant.gender],
   );
 
   const myTotal = scored.reduce((sum, entry) => sum + (entry.score?.points ?? 0), 0);
@@ -186,6 +186,9 @@ export default function RunningLogger({
             נקודות = (מטרים ÷ 100) × משקל הקצב שהוגדר. אין יעד קבוצתי — זו תחרות, וכל נקודה נכנסת
             ישר לטבלת הקבוצות.
           </p>
+          {participant.gender === 'נ' ? (
+            <p className="text-[11px] text-accent">הניקוד שלך כולל מכפיל ×1.5.</p>
+          ) : null}
         </div>
       </Card>
 

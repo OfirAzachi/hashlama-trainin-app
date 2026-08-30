@@ -1,9 +1,14 @@
 /**
  * Scoring rules for the points games (strength and endurance).
  *
- *   Points = Reps x Level
+ *   Points = Reps x Level x Gender multiplier
  *   Static holds:  every 5 seconds  = 1 rep
  *   Bear crawl:    every 2 metres   = 1 rep
+ *   Gender multiplier: x1.5 for women, x1 otherwise — same rule applied to
+ *   running (see lib/running.ts). The database mirrors this exact formula
+ *   (a trigger, not a generated column, since it needs the user's gender
+ *   from a different table) — client-side scoring here is only a live
+ *   preview and must stay in lock-step with it.
  *
  * There is no group goal to "unlock" — points simply accumulate toward the
  * group's standing on the home page league table.
@@ -13,26 +18,32 @@ import { findExercise } from './catalog';
 import type { StrengthExercise } from './strength-catalog';
 import type { GroupId, Participant, PointsSummary, StrengthLog, TrainingSession, User } from './types';
 
+/** x1.5 for women, x1 otherwise — mirrors the database trigger exactly. */
+export function genderMultiplier(gender: string | null | undefined): number {
+  return gender === 'נ' ? 1.5 : 1;
+}
+
 /** Raw input (reps / seconds / metres) converted to scoring reps. */
 export function repsFromRaw(exercise: StrengthExercise, rawValue: number): number {
   if (!Number.isFinite(rawValue) || rawValue <= 0) return 0;
   return Math.floor(rawValue / exercise.unitsPerRep);
 }
 
-/** Points for one interval slot: reps x level. */
-export function pointsFor(exercise: StrengthExercise, rawValue: number): number {
-  return repsFromRaw(exercise, rawValue) * exercise.level;
+/** Points for one interval slot: reps x level x gender multiplier. */
+export function pointsFor(exercise: StrengthExercise, rawValue: number, gender?: string | null): number {
+  return Math.round(repsFromRaw(exercise, rawValue) * exercise.level * genderMultiplier(gender));
 }
 
 /** Convenience for UI previews: both numbers at once. */
 export function scoreEntry(
   exerciseId: string,
   rawValue: number,
+  gender?: string | null,
 ): { reps: number; points: number; exercise: StrengthExercise | undefined } {
   const exercise = findExercise(exerciseId);
   if (!exercise) return { reps: 0, points: 0, exercise: undefined };
   const reps = repsFromRaw(exercise, rawValue);
-  return { reps, points: reps * exercise.level, exercise };
+  return { reps, points: Math.round(reps * exercise.level * genderMultiplier(gender)), exercise };
 }
 
 /* -------------------------------------------------------- aggregates */
@@ -160,6 +171,12 @@ export function groupStandings(input: {
       if (group) pointsByGroup[group] += entry.points;
     });
 
+  // Manual catch-up bonuses count toward the group total too, same as any
+  // other points — just not tied to a specific logged training.
+  input.participants.forEach((person) => {
+    if (person.bonus_points) pointsByGroup[person.team] += person.bonus_points;
+  });
+
   return GROUP_LIST.map((group) => {
     const members = input.participants.filter((person) => person.team === group.id).length;
     const points = pointsByGroup[group.id] ?? 0;
@@ -213,6 +230,13 @@ export function unitStandings(input: {
       if (!unit) return;
       pointsByUnit.set(unit, (pointsByUnit.get(unit) ?? 0) + entry.points);
     });
+
+  // Manual catch-up bonuses count toward the unit total too.
+  input.participants.forEach((person) => {
+    if (person.bonus_points && person.unit) {
+      pointsByUnit.set(person.unit, (pointsByUnit.get(person.unit) ?? 0) + person.bonus_points);
+    }
+  });
 
   return [...membersByUnit.entries()]
     .map(([unit, members]) => {

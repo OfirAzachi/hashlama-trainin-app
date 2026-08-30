@@ -57,7 +57,6 @@ import { GROUP_LIST } from '@/lib/groups';
 import type {
   CatalogKind,
   CategoryId,
-  ExercisePrescription,
   GroupId,
   MetricType,
   RunningSegment,
@@ -105,19 +104,21 @@ const STEPS: Record<TrainingType, Array<{ number: 1 | 2 | 3; title: string; hint
     { number: 2, title: 'הגדרת השחרור', hint: 'אינטרוולים, קטגוריות ורמות' },
     { number: 3, title: 'סקירה ופרסום', hint: 'בודקים מה נפתח ואז שולחים' },
   ],
-  log: [
-    { number: 1, title: 'פרטי האימון', hint: 'סוג, שם, תאריך והערה' },
-    { number: 2, title: 'הגדרת התרגילים ופרסום', hint: 'בלי ניקוד ובלי טיימר — שדה מספרי לכל תרגיל' },
-  ],
 };
 
+/**
+ * "ריצה (פשוטה)" and "שכיבות סמיכה" are pre-filled `running`/`strength`
+ * trainings, not a separate type — clicking one sets trainingType plus
+ * calls `apply()` to fill in the rest, so they score through the exact same
+ * pipeline as any other training. `is_optional` is set alongside for the
+ * "אופציונלי" badge; a trainer can also toggle it manually on anything.
+ */
 const TYPE_CARDS: Array<{
   value: TrainingType;
   title: string;
   blurb: string;
   icon: typeof Timer;
-  /** Only for value: 'log' — which preset this card sets up. */
-  logPreset?: 'running' | 'pushups';
+  preset?: 'simple-running' | 'pushups';
 }> = [
   {
     value: 'running',
@@ -150,54 +151,23 @@ const TYPE_CARDS: Array<{
     icon: Wind,
   },
   {
-    value: 'log',
-    logPreset: 'running',
+    value: 'running',
+    preset: 'simple-running',
     title: 'ריצה (פשוטה)',
-    blurb: 'שני שדות בלבד: מרחק וזמן. בלי מקטעים, בלי קצב, בלי ניקוד.',
+    blurb: 'ריצה רצופה אחת, בלי אינטרוולים — עדיין מזכה בנקודות כמו כל ריצה.',
     icon: Footprints,
   },
   {
-    value: 'log',
-    logPreset: 'pushups',
+    value: 'strength',
+    preset: 'pushups',
     title: 'שכיבות סמיכה',
-    blurb: 'שדה נפרד לכל סט. בלי ניקוד ובלי טיימר — פשוט ממלאים ושולחים.',
+    blurb: 'מוכן מראש עם עד 12 סבבים בקטגוריית דחיפה — כל אחד/ת ממלא/ת כמה שביצע/ה, בלי טיימר.',
     icon: ListChecks,
   },
 ];
 
 /** Both points games share one screen; only the catalogue changes. */
-const isGameType = (type: TrainingType) => type !== 'running' && type !== 'log';
-
-/**
- * Pushups don't have a trainer-fixed set count — the participant decides how
- * many sets to log, revealing fields one at a time in their own logger. This
- * is just the ceiling on pre-created fields to reveal from, generous enough
- * nobody realistically hits it.
- */
-const PUSHUP_SET_CEILING = 12;
-
-/**
- * Builds the plain field-per-exercise list for a 'log' training — one 'all'
- * track so every participant sees the same thing, regardless of team.
- */
-function buildLogTracks(
-  preset: 'running' | 'pushups',
-): Array<{ target_group: SessionTarget; label: string; exercises: Array<Omit<ExercisePrescription, 'id'>> }> {
-  const exercises: Array<Omit<ExercisePrescription, 'id'>> =
-    preset === 'running'
-      ? [
-          { name: 'מרחק', metric_type: 'distance_meters', prescription: 'כמה רצתם, במטרים', target_value: null },
-          { name: 'זמן ריצה', metric_type: 'time_seconds', prescription: 'כמה זמן לקח, בפורמט דק:שנ', target_value: null },
-        ]
-      : Array.from({ length: PUSHUP_SET_CEILING }, (_, index) => ({
-          name: `סט ${index + 1}`,
-          metric_type: 'reps' as const,
-          prescription: 'כמה חזרות בסט הזה',
-          target_value: null,
-        }));
-
-  return [{ target_group: 'all', label: preset === 'running' ? 'ריצה' : 'שכיבות סמיכה', exercises }];
-}
+const isGameType = (type: TrainingType) => type !== 'running';
 
 let uidCounter = 0;
 const nextUid = () => `dx-${(uidCounter += 1)}`;
@@ -399,8 +369,10 @@ export default function WeeklyTrainingBuilder({
   const [trainingType, setTrainingType] = useState<TrainingType>('running');
   const [runMode, setRunMode] = useState<'intervals' | 'steady'>('intervals');
   const [segments, setSegments] = useState<SegmentDraft[]>([blankSegment()]);
-  /** 'log' training presets — a plain field-per-exercise list, no points/timer. */
-  const [logPreset, setLogPreset] = useState<'running' | 'pushups'>('running');
+  /** Shown as an "אופציונלי" badge to participants — set automatically by the two presets, or toggled manually. */
+  const [isOptional, setIsOptional] = useState(false);
+  /** Which TYPE_CARDS entry is highlighted — distinct from trainingType, since two cards (plain "ריצה" and "ריצה (פשוטה)") share the same type. */
+  const [selectedCardKey, setSelectedCardKey] = useState('running-');
   const [defaultWork, setDefaultWork] = useState(40);
   const [defaultRest, setDefaultRest] = useState(20);
   const [roundCategories, setRoundCategories] = useState<CategoryId[]>(() =>
@@ -435,9 +407,7 @@ export default function WeeklyTrainingBuilder({
     ? fixedExercises
       ? roundExerciseIds.length > 0
       : roundCategories.length > 0 && openLevels.length > 0
-    : trainingType === 'log'
-      ? true
-      : validSegments.length > 0;
+    : validSegments.length > 0;
   const roundsTotal = fixedExercises ? roundExerciseIds.length : roundCategories.length;
 
   const updateSegment = (uid: string, patch: Partial<SegmentDraft>) =>
@@ -535,19 +505,20 @@ export default function WeeklyTrainingBuilder({
   /** Loads a session's (or template's) structure into the draft state — segments/rounds/timing. */
   const applySessionStructure = (
     source: Pick<TrainingSession, 'training_type' | 'workout_instructions' | 'running' | 'points_game'> & {
-      tracks?: TrainingSession['tracks'];
+      is_optional?: boolean;
     },
   ) => {
     setTrainingType(source.training_type);
     setInstructions(source.workout_instructions);
-
-    if (source.training_type === 'log') {
-      // Infer which preset it was from the exercise list, since a session
-      // only stores the resulting fields, not which preset built them.
-      const exercises = source.tracks?.[0]?.exercises ?? [];
-      const isPushups = exercises.some((exercise) => exercise.metric_type === 'reps');
-      setLogPreset(isPushups ? 'pushups' : 'running');
-    }
+    setIsOptional(source.is_optional ?? false);
+    // Best-effort: highlight the matching preset card if this looks like one.
+    setSelectedCardKey(
+      source.is_optional && source.training_type === 'running'
+        ? 'running-simple-running'
+        : source.is_optional && source.training_type === 'strength'
+          ? 'strength-pushups'
+          : `${source.training_type}-`,
+    );
 
     if (source.training_type === 'running' && source.running) {
       setRunMode(source.running.mode);
@@ -635,7 +606,8 @@ export default function WeeklyTrainingBuilder({
     setTrainingType('running');
     setRunMode('intervals');
     setSegments([blankSegment()]);
-    setLogPreset('running');
+    setIsOptional(false);
+    setSelectedCardKey('running-');
   };
 
   /** Builds the add/remove/update handlers for an attached warm-up/cool-down round list. */
@@ -711,9 +683,9 @@ export default function WeeklyTrainingBuilder({
             : null,
         // Neither running nor the points games use per-group exercise tracks:
         // running carries its plan in segments, and a points game has
-        // everyone pick their own exercise each round. 'log' is the one
-        // type that does use tracks — built from the chosen preset.
-        tracks: trainingType === 'log' ? buildLogTracks(logPreset) : [],
+        // everyone pick their own exercise each round.
+        tracks: [],
+        is_optional: isOptional,
       };
 
       const result = editingSessionId
@@ -1048,15 +1020,47 @@ export default function WeeklyTrainingBuilder({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            {TYPE_CARDS.map(({ value, logPreset: cardPreset, title: cardTitle, blurb, icon: Icon }) => {
-              const active = value === 'log' ? trainingType === 'log' && logPreset === cardPreset : trainingType === value;
+            {TYPE_CARDS.map(({ value, preset, title: cardTitle, blurb, icon: Icon }) => {
+              const cardKey = `${value}-${preset ?? ''}`;
+              const active = selectedCardKey === cardKey;
               return (
                 <button
-                  key={value === 'log' ? `log-${cardPreset}` : value}
+                  key={cardKey}
                   type="button"
                   onClick={() => {
+                    setSelectedCardKey(cardKey);
                     setTrainingType(value);
-                    if (value === 'log' && cardPreset) setLogPreset(cardPreset);
+                    setIsOptional(Boolean(preset));
+
+                    if (preset === 'simple-running') {
+                      // One continuous run, no intervals to configure — still
+                      // scores through the exact same running pipeline.
+                      setRunMode('steady');
+                      setSegments([
+                        {
+                          uid: `sg-${(uidCounter += 1)}`,
+                          label: 'ריצה רצופה',
+                          target_group: 'all',
+                          repeats: '1',
+                          meters: '3000',
+                          pace_category: 'borg',
+                          recovery: '0',
+                        },
+                      ]);
+                      return;
+                    }
+
+                    if (preset === 'pushups') {
+                      // Up to 12 open "push"-category rounds — nobody has to
+                      // fill them all, unused ones are simply left blank.
+                      setRoundCategories(Array(12).fill('push'));
+                      setRoundWorkSeconds(Array(12).fill(defaultWork));
+                      setRoundRestSeconds(Array(12).fill(defaultRest));
+                      setOpenLevels([1, 2, 3]);
+                      setPreviewCategory('push');
+                      return;
+                    }
+
                     if (isGameType(value)) {
                       const kind = value as CatalogKind;
                       const count = hasFixedExercises(kind) ? 4 : 6;
@@ -1092,6 +1096,16 @@ export default function WeeklyTrainingBuilder({
               );
             })}
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={isOptional}
+              onChange={(event) => setIsOptional(event.target.checked)}
+            />
+            סימון כאימון אופציונלי
+            <span className="text-xs font-normal text-muted">— מוצג כתג "אופציונלי" למתאמנים</span>
+          </label>
 
           {trainingType !== 'warmup' && trainingType !== 'cooldown' && !editingSessionId ? (
             <div className="flex flex-wrap gap-4 rounded-2xl border border-line bg-elevated/50 p-3">
@@ -1444,96 +1458,6 @@ export default function WeeklyTrainingBuilder({
               נכנסת ישר לטבלת הקבוצות בעמוד הבית.
             </p>
           </Card>
-
-          {publish.isError ? (
-            <p role="alert" className="flex items-center gap-2 text-sm text-rose-600 dark:text-rose-400">
-              <TriangleAlert aria-hidden className="h-4 w-4" />
-              {(publish.error as Error).message}
-            </p>
-          ) : null}
-
-          <div className="flex items-center justify-between gap-2">
-            <button type="button" className="btn-ghost" onClick={() => setStep(1)}>
-              <ArrowLeft aria-hidden className="h-4 w-4 rtl:rotate-180" />
-              חזרה
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={!canContinueFromStep2 || publish.isPending}
-              onClick={() => publish.mutate()}
-            >
-              {publish.isPending ? (
-                <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send aria-hidden className="h-4 w-4" />
-              )}
-              {publish.isPending
-                ? editingSessionId
-                  ? 'שומרת…'
-                  : 'מפרסם…'
-                : editingSessionId
-                  ? 'שמירת השינויים'
-                  : `פרסום ל-${participantCount} מתאמנים`}
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {/* ------------------------------------------ step 2 — log preset */}
-      {step === 2 && trainingType === 'log' ? (
-        <div className="space-y-4">
-          <Card className="card-pad space-y-4">
-            <div>
-              <h2 className="text-base font-semibold text-ink">מה ממלאים?</h2>
-              <p className="mt-1 text-sm text-muted">
-                בלי סבבים ובלי ניקוד — כל מתאמן/ת ממלא/ת מספר לכל שדה, ושולח/ת מתי שנוח.
-              </p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              {(
-                [
-                  { value: 'running' as const, title: 'ריצה', blurb: 'מרחק וזמן' },
-                  { value: 'pushups' as const, title: 'שכיבות סמיכה', blurb: 'שדה לכל סט' },
-                ]
-              ).map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  aria-pressed={logPreset === option.value}
-                  onClick={() => setLogPreset(option.value)}
-                  className={cn(
-                    'rounded-2xl border p-3 text-start transition-colors',
-                    logPreset === option.value
-                      ? 'border-accent bg-accent/5 ring-1 ring-accent/30'
-                      : 'border-line bg-surface hover:bg-elevated',
-                  )}
-                >
-                  <span className="block text-sm font-semibold text-ink">{option.title}</span>
-                  <span className="mt-0.5 block text-xs text-muted">{option.blurb}</span>
-                </button>
-              ))}
-            </div>
-          </Card>
-
-          {logPreset === 'pushups' ? (
-            <Card className="card-pad space-y-2">
-              <h3 className="text-sm font-semibold text-ink">מספר הסטים נקבע על ידי כל מתאמן/ת</h3>
-              <p className="text-xs text-muted">
-                אין צורך לקבוע מראש כמה סטים — בעמוד הרישום יש כפתור "הוספת סט" שמוסיף שדה בכל פעם, וכל אחד/ת
-                מוסיף/ה כמה שהוא/היא בפועל ביצע/ה.
-              </p>
-            </Card>
-          ) : (
-            <Card className="card-pad space-y-2">
-              <h3 className="text-sm font-semibold text-ink">שני שדות</h3>
-              <ul className="space-y-1 text-sm text-ink">
-                <li>מרחק — במטרים</li>
-                <li>זמן ריצה — בפורמט דק:שנ</li>
-              </ul>
-            </Card>
-          )}
 
           {publish.isError ? (
             <p role="alert" className="flex items-center gap-2 text-sm text-rose-600 dark:text-rose-400">

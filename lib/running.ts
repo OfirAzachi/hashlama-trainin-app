@@ -6,11 +6,17 @@
  * qualitatively (walk / talk-pace jog / easy run / sprint) rather than a
  * number, so scoring reads distance covered against that category's weight:
  *
- *   points = (metres covered / 100) x pace multiplier
+ *   points = (metres covered / 100) x pace multiplier x gender multiplier
+ *
+ * Gender multiplier: x1.5 for women, x1 otherwise — same rule as the
+ * strength catalogue (see lib/points.ts). The database mirrors this exact
+ * formula via a trigger; client-side scoring here is only a live preview
+ * and must stay in lock-step with it.
  *
  * There is no group goal for running — it is pure competition. Every point
  * feeds straight into the group's league-table total on the home page.
  */
+import { genderMultiplier } from './points';
 import type {
   Participant,
   RunningConfig,
@@ -49,7 +55,7 @@ export interface RunningScore {
 }
 
 /** Scores one segment from the repeats the athlete actually completed. */
-export function scoreSegment(segment: RunningSegment, repeatsDone: number): RunningScore {
+export function scoreSegment(segment: RunningSegment, repeatsDone: number, gender?: string | null): RunningScore {
   const repeats = Math.max(0, Math.min(segment.repeats, Math.floor(repeatsDone)));
   const distance = segment.distance_meters * repeats;
   if (repeats === 0 || distance <= 0) {
@@ -57,7 +63,7 @@ export function scoreSegment(segment: RunningSegment, repeatsDone: number): Runn
   }
   return {
     total_distance_meters: distance,
-    points: Math.round(distance / 100) * PACE_MULTIPLIER[segment.pace_category],
+    points: Math.round(Math.round(distance / 100) * PACE_MULTIPLIER[segment.pace_category] * genderMultiplier(gender)),
   };
 }
 

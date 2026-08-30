@@ -53,6 +53,10 @@ export interface User {
   joined_at: string; // ISO date
   /** כמ (operational-fitness) status — non-empty means an exemption applies (e.g. may skip exercises). */
   km_levels: number[];
+  /** Drives the x1.5 points multiplier for women — see lib/points.ts / lib/running.ts. */
+  gender: 'ז' | 'נ' | null;
+  /** Manual points adjustment (e.g. a catch-up baseline) — added into standings/leaderboards on top of real logged points, never disguised as a training. */
+  bonus_points: number;
 }
 
 /**
@@ -112,6 +116,8 @@ export interface TrainingSession {
   running: RunningConfig | null;
   /** Prescribed work per group. Empty for strength trainings. */
   tracks: SessionTrack[];
+  /** Shown as an "אופציונלי" badge to participants — independent of training_type. */
+  is_optional: boolean;
 }
 
 export interface SessionLog {
@@ -225,6 +231,7 @@ export interface SessionPlanInput {
     label: string;
     exercises: Array<Omit<ExercisePrescription, 'id'>>;
   }>;
+  is_optional?: boolean;
 }
 
 export type ActionResult<T = undefined> =
@@ -342,22 +349,21 @@ export type { CategoryId, StrengthLevel, StrengthUnit } from './strength-catalog
 
 /** Aerobic trainings prescribe exercises; strength trainings are a points game. */
 /**
- * Six kinds of weekly training:
+ * Five kinds of weekly training:
  *   running   — segments at prescribed paces (intervals or one steady run)
  *   endurance — a points game built from heart-rate raising exercises
  *   strength  — a points game built from the muscle catalogue
  *   warmup    — a points game built from dynamic stretches / pulse raisers
  *   cooldown  — a points game built from static stretches
- *   log       — a plain prescribed-exercise list with no points and no
- *               interval timing, filled with a number per exercise — used
- *               for the "simple running" (distance + time) and "sets of
- *               pushups" (one field per set) presets. No group-specific
- *               tracks: one 'all' track covers every participant.
  * The four game types share the same interval/points machinery — only the
- * catalogue they draw exercises from differs. `log` reuses the older
- * prescribed-exercise mechanism (`tracks`) instead.
+ * catalogue they draw exercises from differs.
+ *
+ * The planner's "ריצה (פשוטה)" and "שכיבות סמיכה" presets are just
+ * pre-filled `running`/`strength` trainings (steady 1-segment run;
+ * fixed-category "push" rounds) with `is_optional` set — not a separate
+ * type, so they score through the exact same pipeline as everything else.
  */
-export type TrainingType = 'running' | 'endurance' | 'strength' | 'warmup' | 'cooldown' | 'log';
+export type TrainingType = 'running' | 'endurance' | 'strength' | 'warmup' | 'cooldown';
 
 /** running is the only non-game (segment-based) type. */
 export const AEROBIC_TYPES: TrainingType[] = ['running', 'endurance'];
