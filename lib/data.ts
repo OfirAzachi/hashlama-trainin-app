@@ -16,6 +16,7 @@ import { groupStandings, repsFromRaw, sessionLeaderboard, summarisePoints, unitS
 import { scoreSegment, segmentsForGroup } from './running';
 import { findExercise, roundCount } from './catalog';
 import { createClient } from './supabase/server';
+import type { Json } from './supabase/database.types';
 import type { GroupStanding } from './points';
 import type { HomeHighlights } from '@/components/GroupStandings';
 import type {
@@ -30,6 +31,8 @@ import type {
   Participant,
   ParticipantSnapshot,
   PointsGameConfig,
+  QuickLog,
+  QuickLogInput,
   RunningConfig,
   RunningSegment,
   SessionLog,
@@ -126,6 +129,7 @@ function mapSession(row: any): TrainingSession {
         round_categories: configRow.round_categories ?? [],
         round_exercise_ids: configRow.round_exercise_ids ?? [],
         allowed_levels: configRow.allowed_levels ?? [],
+        tiers: configRow.tiers ?? undefined,
       }
     : null;
 
@@ -428,7 +432,7 @@ export async function getParticipantSnapshot(userId: string): Promise<Participan
   const participant = await getParticipantById(userId);
   if (!participant) return null;
 
-  const [sessions, logs, media, benchmarkTests, allLogsForSummary, strengthLogs, runningLogs] =
+  const [sessions, logs, media, benchmarkTests, allLogsForSummary, strengthLogs, runningLogs, quickLogs] =
     await Promise.all([
       getSessionsForGroup(participant.team),
       getLogs({ userId }),
@@ -437,6 +441,7 @@ export async function getParticipantSnapshot(userId: string): Promise<Participan
       getLogs(),
       getStrengthLogs(),
       getRunningLogs(),
+      getQuickLogs({ userId }),
     ]);
 
   return {
@@ -450,6 +455,7 @@ export async function getParticipantSnapshot(userId: string): Promise<Participan
       ...strengthLogs,
       ...runningLogs,
     ]),
+    quickLogs,
   };
 }
 
@@ -583,6 +589,8 @@ export async function insertSession(input: SessionPlanInput): Promise<TrainingSe
       round_categories: input.points_game.round_categories,
       round_exercise_ids: input.points_game.round_exercise_ids,
       allowed_levels: input.points_game.allowed_levels,
+      // Small trainer-authored structure stored verbatim as jsonb.
+      tiers: input.points_game.tiers ? (input.points_game.tiers as unknown as Json) : null,
     });
     if (error) throw error;
   }
@@ -727,6 +735,8 @@ export async function updateSession(sessionId: string, input: SessionPlanInput):
       round_categories: input.points_game.round_categories,
       round_exercise_ids: input.points_game.round_exercise_ids,
       allowed_levels: input.points_game.allowed_levels,
+      // Small trainer-authored structure stored verbatim as jsonb.
+      tiers: input.points_game.tiers ? (input.points_game.tiers as unknown as Json) : null,
     });
     if (error) throw error;
   }
@@ -1202,18 +1212,79 @@ export async function insertRunningEntries(entries: RunningEntryInput[]): Promis
   return data.map(mapRunningLog);
 }
 
+/* ------------------------------------------------------ quick logs */
+
+function mapQuickLog(row: any): QuickLog {
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    activity: row.activity,
+    distance_meters: row.distance_meters,
+    reps: row.reps,
+    points: row.points,
+    created_at: row.created_at,
+  };
+}
+
+/** Self-logged runs and push-up sets, newest first. */
+export async function getQuickLogs(filters?: { userId?: string }): Promise<QuickLog[]> {
+  const supabase = await createClient();
+  let query = supabase.from('quick_logs').select('*');
+  if (filters?.userId) query = query.eq('user_id', filters.userId);
+  const { data, error } = await query.order('created_at', { ascending: false });
+  if (error) throw error;
+  return data.map(mapQuickLog);
+}
+
+/**
+ * Records one self-logged activity. Points are never taken from the client —
+ * the quick_logs trigger computes them from the distance/reps and the user's
+ * gender (see the migration).
+ */
+export async function insertQuickLog(input: QuickLogInput): Promise<QuickLog> {
+  const supabase = await createClient();
+  const value = Math.round(input.value);
+  const { data, error } = await supabase
+    .from('quick_logs')
+    .insert({
+      user_id: input.user_id,
+      activity: input.activity,
+      distance_meters: input.activity === 'running' ? value : null,
+      reps: input.activity === 'pushups' ? value : null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return mapQuickLog(data);
+}
+
+/** Owner of a quick log, to check permission before a delete. */
+export async function getQuickLogOwner(logId: string): Promise<{ user_id: string } | null> {
+  const supabase = await createClient();
+  const { data } = await supabase.from('quick_logs').select('user_id').eq('id', logId).maybeSingle();
+  return data ?? null;
+}
+
+export async function deleteQuickLog(logId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.from('quick_logs').delete().eq('id', logId);
+  if (error) throw error;
+}
+
 /* ------------------------------------------------- cohort standings */
 
 /** The league table for the home page: points, completion and improvement. */
 export async function getGroupStandings(): Promise<GroupStanding[]> {
-  const [participants, sessions, logs, strengthLogs, runningLogs, benchmarkTests] = await Promise.all([
-    getParticipants(),
-    getSessions(),
-    getLogs(),
-    getStrengthLogs(),
-    getRunningLogs(),
-    getBenchmarkTests(),
-  ]);
+  const [participants, sessions, logs, strengthLogs, runningLogs, benchmarkTests, quickLogs] =
+    await Promise.all([
+      getParticipants(),
+      getSessions(),
+      getLogs(),
+      getStrengthLogs(),
+      getRunningLogs(),
+      getBenchmarkTests(),
+      getQuickLogs(),
+    ]);
 
   const summaries = buildParticipantSummaries(participants, benchmarkTests, sessions, logs, [
     ...strengthLogs,
@@ -1234,11 +1305,16 @@ export async function getGroupStandings(): Promise<GroupStanding[]> {
   return groupStandings({
     participants,
     strengthLogs,
-    runningPoints: runningLogs.map((log) => ({
-      session_id: log.session_id,
-      user_id: log.user_id,
-      points: log.points,
-    })),
+    // Self-logged runs/push-ups ride along here: the standings only read
+    // user_id and points, and these count toward the group total the same way.
+    runningPoints: [
+      ...runningLogs.map((log) => ({
+        session_id: log.session_id,
+        user_id: log.user_id,
+        points: log.points,
+      })),
+      ...quickLogs.map((log) => ({ session_id: 'quick', user_id: log.user_id, points: log.points })),
+    ],
     completionByGroup,
     improvementByGroup,
   });
@@ -1246,17 +1322,27 @@ export async function getGroupStandings(): Promise<GroupStanding[]> {
 
 /** Everything the home page shows: standings plus the human highlights. */
 export async function getHomeHighlights(): Promise<HomeHighlights> {
-  const [participants, sessions, standings, logs, strengthLogs, runningLogs, benchmarkTests, media] =
-    await Promise.all([
-      getParticipants(),
-      getSessions(),
-      getGroupStandings(),
-      getLogs(),
-      getStrengthLogs(),
-      getRunningLogs(),
-      getBenchmarkTests(),
-      getMedia(),
-    ]);
+  const [
+    participants,
+    sessions,
+    standings,
+    logs,
+    strengthLogs,
+    runningLogs,
+    benchmarkTests,
+    media,
+    quickLogs,
+  ] = await Promise.all([
+    getParticipants(),
+    getSessions(),
+    getGroupStandings(),
+    getLogs(),
+    getStrengthLogs(),
+    getRunningLogs(),
+    getBenchmarkTests(),
+    getMedia(),
+    getQuickLogs(),
+  ]);
 
   const summaries = buildParticipantSummaries(participants, benchmarkTests, sessions, logs, [
     ...strengthLogs,
@@ -1264,7 +1350,7 @@ export async function getHomeHighlights(): Promise<HomeHighlights> {
   ]);
 
   const pointsByUser = new Map<string, number>();
-  [...strengthLogs, ...runningLogs].forEach((log) => {
+  [...strengthLogs, ...runningLogs, ...quickLogs].forEach((log) => {
     pointsByUser.set(log.user_id, (pointsByUser.get(log.user_id) ?? 0) + log.points);
   });
   // Manual catch-up bonuses count toward a participant's total too.
@@ -1317,16 +1403,23 @@ export async function getHomeHighlights(): Promise<HomeHighlights> {
     .sort((a, b) => b.streak - a.streak)
     .slice(0, 5);
 
-  const kilometres = runningLogs.reduce((sum, log) => sum + log.total_distance_meters, 0) / 1000;
+  // Self-logged runs add to the cohort's kilometres too.
+  const kilometres =
+    (runningLogs.reduce((sum, log) => sum + log.total_distance_meters, 0) +
+      quickLogs.reduce((sum, log) => sum + (log.distance_meters ?? 0), 0)) /
+    1000;
 
   const unitRace = unitStandings({
     participants,
     strengthLogs,
-    runningPoints: runningLogs.map((log) => ({
-      session_id: log.session_id,
-      user_id: log.user_id,
-      points: log.points,
-    })),
+    runningPoints: [
+      ...runningLogs.map((log) => ({
+        session_id: log.session_id,
+        user_id: log.user_id,
+        points: log.points,
+      })),
+      ...quickLogs.map((log) => ({ session_id: 'quick', user_id: log.user_id, points: log.points })),
+    ],
   });
 
   return {

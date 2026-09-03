@@ -36,6 +36,136 @@ function distanceLabel(meters: number): string {
 }
 
 /**
+ * Simplified running flow: the trainer set a distance, the participant just
+ * enters how long it took — no pace category, no repeats, one screen. The
+ * score is fixed by the distance (see lib/running.ts SIMPLE_PACE_CATEGORY);
+ * the time is kept for the participant's own record and shown as a derived
+ * pace, but never changes the points.
+ */
+function SimpleRunLogger({
+  session,
+  participant,
+  segment,
+  myLogs,
+}: {
+  session: TrainingSession;
+  participant: Participant;
+  segment: RunningSegment;
+  myLogs: RunningLog[];
+}) {
+  const router = useRouter();
+  const existing = myLogs.find((log) => log.segment_id === segment.id);
+  const [raw, setRaw] = useState(existing ? formatDuration(existing.actual_seconds) : '');
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<number | null>(null);
+
+  const seconds = parseDuration(raw);
+  const score = scoreSegment(segment, 1, participant.gender);
+  const pace = seconds != null && seconds > 0 ? paceFromRun(seconds, segment.distance_meters) : null;
+
+  const save = useMutation({
+    mutationFn: async () => {
+      if (seconds == null || seconds <= 0) {
+        throw new Error('הזינו כמה זמן לקח לכם.');
+      }
+      const result = await submitRunningWorkout([
+        {
+          session_id: session.id,
+          user_id: participant.id,
+          segment_id: segment.id,
+          segment_index: 0,
+          repeats_done: 1,
+          actual_seconds: seconds,
+        },
+      ]);
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
+    },
+    onSuccess: (created) => {
+      setError(null);
+      setSaved(created.reduce((sum, log) => sum + log.points, 0));
+      startTransition(() => router.refresh());
+    },
+    onError: (mutationError: Error) => {
+      setSaved(null);
+      setError(mutationError.message);
+    },
+  });
+
+  return (
+    <div className="space-y-4 pb-40 sm:pb-24">
+      <Card>
+        <CardHeader
+          icon={<Flag className="h-4 w-4" />}
+          title={session.title}
+          subtitle={`ריצה · שבוע ${session.week_index} · ${formatDate(session.date)}`}
+          action={<Badge tone="accent">{distanceLabel(segment.distance_meters)}</Badge>}
+        />
+        <div className="card-pad space-y-3">
+          <p className="text-sm leading-relaxed text-muted">{session.workout_instructions}</p>
+          <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs text-accent tnum">
+            הניקוד נקבע לפי המרחק שהוגדר לאימון — {score.points} נק׳ על השלמת{' '}
+            {distanceLabel(segment.distance_meters)}. הזמן נשמר לתיעוד האישי שלכם ולא משנה את הניקוד.
+          </p>
+          {participant.gender === 'נ' ? (
+            <p className="text-[11px] text-accent">הניקוד שלך כולל מכפיל ×1.5.</p>
+          ) : null}
+        </div>
+      </Card>
+
+      <Card className="card-pad space-y-3">
+        <label className="space-y-1.5">
+          <span className="text-sm font-medium text-ink">כמה זמן לקח לכם? (דק:שנ)</span>
+          <DurationInput
+            className="input h-12 text-center text-lg tnum"
+            placeholder="0:00"
+            aria-label="זמן הריצה"
+            value={raw}
+            onValueChange={setRaw}
+          />
+        </label>
+        {pace != null ? <p className="text-xs text-muted tnum">קצב: {formatDuration(pace)} / ק״מ</p> : null}
+      </Card>
+
+      {error ? (
+        <div
+          role="alert"
+          className="fixed inset-x-3 bottom-32 z-30 mx-auto flex max-w-3xl items-center gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 shadow-lg dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300 sm:bottom-20"
+        >
+          <TriangleAlert aria-hidden className="h-5 w-5 shrink-0" />
+          {error}
+        </div>
+      ) : null}
+
+      {saved !== null ? (
+        <p role="status" className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+          <CheckCircle2 aria-hidden className="h-4 w-4" />
+          נשמר — צברת {saved} נקודות לקבוצה.
+        </p>
+      ) : null}
+
+      <div className="fixed inset-x-0 bottom-16 z-20 border-t border-line bg-surface/95 p-3 backdrop-blur sm:sticky sm:bottom-4 sm:rounded-2xl sm:border">
+        <div className="mx-auto flex max-w-3xl items-center gap-3">
+          <button
+            type="button"
+            className="btn-primary ms-auto"
+            onClick={() => save.mutate()}
+            disabled={save.isPending}
+          >
+            {save.isPending ? (
+              <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save aria-hidden className="h-4 w-4" />
+            )}
+            {save.isPending ? 'שומר…' : 'שמירת הריצה שלי'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Logging screen for a running training: one card per prescribed segment.
  * The trainer dictates the pace as a category (walk / talk-pace jog / easy
  * run / sprint) rather than a number; the participant confirms repeats and
@@ -165,6 +295,12 @@ export default function RunningLogger({
       <Card className="card-pad">
         <p className="text-sm text-muted">לא הוגדרו מקטעי ריצה לקבוצה שלך באימון הזה.</p>
       </Card>
+    );
+  }
+
+  if (config.mode === 'simple') {
+    return (
+      <SimpleRunLogger session={session} participant={participant} segment={segments[0]} myLogs={myLogs} />
     );
   }
 

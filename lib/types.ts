@@ -273,6 +273,8 @@ export interface ParticipantSnapshot {
   /** Every published week with its completed / missed / due status. */
   trainings: TrainingCard[];
   summary: ParticipantSummary;
+  /** The viewer's own self-logged runs and push-up sets, newest first. */
+  quickLogs: QuickLog[];
 }
 
 /* -------------------------------------------------------- social feed */
@@ -399,6 +401,26 @@ export interface PointsGameConfig {
   round_exercise_ids: string[];
   /** And only at these levels — each person picks what they can do safely. Unused when `round_exercise_ids` is set. */
   allowed_levels: StrengthLevel[];
+  /**
+   * Simplified mode: exactly 3 premade difficulty tiers (e.g. מתחילים /
+   * בינוני / מתקדם). The participant picks one tier for the whole training,
+   * still chooses their own exercise per round (within that tier's level and
+   * the round's category), and the reps are premade — nothing to type, just
+   * pick exercises and press done. When set, this takes over from
+   * `allowed_levels` for level selection; `allowed_levels` is still kept in
+   * sync (union of the tiers' levels) for anything reading it generically.
+   */
+  tiers?: DifficultyTier[];
+}
+
+/** One premade difficulty tier for the simplified strength/endurance flow. */
+export interface DifficultyTier {
+  /** e.g. "מתחילים", "בינוני", "מתקדם". */
+  name: string;
+  /** The single exercise level this tier plays at, in every round. */
+  level: StrengthLevel;
+  /** Premade rep target per round, in order — the participant never types a number. */
+  round_reps: number[];
 }
 
 /** One filled interval slot: the exercise the participant chose and its score. */
@@ -473,8 +495,14 @@ export interface RunningSegment {
 }
 
 export interface RunningConfig {
-  /** `steady` is a single continuous run; `intervals` is a segment list. */
-  mode: 'intervals' | 'steady';
+  /**
+   * `steady` is a single continuous run; `intervals` is a segment list;
+   * `simple` is the simplified flow — the trainer sets only a distance, the
+   * participant enters how long it took them, done. `simple` still carries
+   * one segment (pace_category fixed to the base weight) so it reuses the
+   * exact same running_logs schema and scoring — nothing DB-side changes.
+   */
+  mode: 'intervals' | 'steady' | 'simple';
   segments: RunningSegment[];
   // No group goal here on purpose: running is pure competition — points feed
   // the group's league-table total directly, with nothing to "unlock".
@@ -509,6 +537,37 @@ export interface RunningEntryInput {
   segment_index: number;
   repeats_done: number;
   actual_seconds: number;
+}
+
+/* ----------------------------------------------------- quick self-logs */
+
+/** The two activities a participant can log on their own, with no session behind them. */
+export const QUICK_ACTIVITIES = ['running', 'pushups'] as const;
+export type QuickActivity = (typeof QUICK_ACTIVITIES)[number];
+
+/**
+ * One self-logged activity: a run (distance only) or a set of push-ups (total
+ * reps only). Unlimited entries per person; points land in the group standings
+ * like any other points, scored at the base weight since the numbers are
+ * self-reported — see the quick_logs migration for the exact formulas.
+ */
+export interface QuickLog {
+  id: string;
+  user_id: string;
+  activity: QuickActivity;
+  /** Set for a run, null for push-ups. */
+  distance_meters: number | null;
+  /** Set for push-ups, null for a run. */
+  reps: number | null;
+  points: number;
+  created_at: string; // ISO timestamp
+}
+
+export interface QuickLogInput {
+  user_id: string;
+  activity: QuickActivity;
+  /** Metres run, or total push-ups — whichever the activity calls for. */
+  value: number;
 }
 
 /* -------------------------------------------------------------- templates */

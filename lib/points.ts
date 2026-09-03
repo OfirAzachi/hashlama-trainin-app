@@ -16,7 +16,15 @@
 import { GROUP_LIST } from './groups';
 import { findExercise } from './catalog';
 import type { StrengthExercise } from './strength-catalog';
-import type { GroupId, Participant, PointsSummary, StrengthLog, TrainingSession, User } from './types';
+import type {
+  GroupId,
+  Participant,
+  PointsSummary,
+  QuickActivity,
+  StrengthLog,
+  TrainingSession,
+  User,
+} from './types';
 
 /** x1.5 for women, x1 otherwise — mirrors the database trigger exactly. */
 export function genderMultiplier(gender: string | null | undefined): number {
@@ -44,6 +52,24 @@ export function scoreEntry(
   if (!exercise) return { reps: 0, points: 0, exercise: undefined };
   const reps = repsFromRaw(exercise, rawValue);
   return { reps, points: Math.round(reps * exercise.level * genderMultiplier(gender)), exercise };
+}
+
+/**
+ * Points for one self-logged activity, mirroring the quick_logs trigger
+ * exactly (client-side preview only — the database is the authority):
+ *   running — round(metres / 100) x gender multiplier
+ *   pushups — reps x 1 x gender multiplier
+ * Both at the base weight, since these numbers are self-reported and carry no
+ * trainer-set pace category or chosen exercise level.
+ */
+export function quickLogPoints(
+  activity: QuickActivity,
+  value: number,
+  gender?: string | null,
+): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  const base = activity === 'running' ? Math.round(value / 100) : value;
+  return Math.round(base * genderMultiplier(gender));
 }
 
 /* -------------------------------------------------------- aggregates */

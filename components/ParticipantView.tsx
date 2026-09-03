@@ -4,6 +4,7 @@ import { ClipboardList, LineChart } from 'lucide-react';
 import { useState } from 'react';
 
 import ParticipantDashboard from '@/components/ParticipantDashboard';
+import QuickLogCard from '@/components/QuickLogCard';
 import TrainingsList from '@/components/TrainingsList';
 import { cn } from '@/lib/cn';
 import type { ParticipantSnapshot } from '@/lib/types';
@@ -45,7 +46,10 @@ export default function ParticipantView({ snapshot }: { snapshot: ParticipantSna
       </div>
 
       {tab === 'trainings' ? (
-        <TrainingsList participant={snapshot.participant} trainings={snapshot.trainings} />
+        <div className="space-y-4">
+          <QuickLogCard participant={snapshot.participant} logs={snapshot.quickLogs} />
+          <TrainingsList participant={snapshot.participant} trainings={snapshot.trainings} />
+        </div>
       ) : null}
 
       {tab === 'progress' ? <ParticipantDashboard snapshot={snapshot} /> : null}

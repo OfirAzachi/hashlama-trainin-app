@@ -6,8 +6,11 @@ import {
   clearExerciseGifOverride,
   deleteComment,
   deleteMedia,
+  deleteQuickLog,
   deleteSession,
   getCommentOwner,
+  getQuickLogOwner,
+  insertQuickLog,
   getExerciseGifOverrides,
   getMediaOwner,
   getSessionTemplates,
@@ -32,12 +35,15 @@ import { findExercise, hasFixedExercises } from '@/lib/catalog';
 import { supabaseConfigured } from '@/lib/supabase/env';
 import { createClient } from '@/lib/supabase/server';
 import { METRIC_TYPES } from '@/lib/types';
+import { QUICK_ACTIVITIES } from '@/lib/types';
 import type {
   ActionResult,
   GroupId,
   LogEntryInput,
   MediaComment,
   MediaUploadInput,
+  QuickActivity,
+  QuickLog,
   SessionLog,
   SessionMedia,
   RunningEntryInput,
@@ -451,6 +457,80 @@ export async function fetchExerciseGifOverrides(): Promise<ActionResult<Record<s
 export async function fetchSessionTemplates(): Promise<ActionResult<SessionTemplate[]>> {
   const templates = await getSessionTemplates();
   return { ok: true, data: templates };
+}
+
+/* --------------------------------------------------- quick self-logs */
+
+/** Sanity ceilings, so a typo can't dump a fake score into the standings. */
+const MAX_QUICK_DISTANCE_METERS = 100_000;
+const MAX_QUICK_PUSHUPS = 2_000;
+
+/**
+ * Records a self-logged run or set of push-ups — no session behind it, any
+ * time, as many as they like. Points are computed by the database from the
+ * distance/reps and the athlete's gender; nothing about the score is taken
+ * from the client.
+ */
+export async function addQuickLog(
+  userId: string,
+  activity: QuickActivity,
+  value: number,
+): Promise<ActionResult<QuickLog>> {
+  if (!userId) return { ok: false, error: 'חסר משתמש.' };
+  if (!QUICK_ACTIVITIES.includes(activity)) return { ok: false, error: 'סוג פעילות לא מוכר.' };
+
+  const rounded = Math.round(value);
+  if (!Number.isFinite(rounded) || rounded <= 0) {
+    return {
+      ok: false,
+      error: activity === 'running' ? 'הזינו מרחק במטרים.' : 'הזינו כמה שכיבות סמיכה ביצעתם.',
+    };
+  }
+  if (activity === 'running' && rounded > MAX_QUICK_DISTANCE_METERS) {
+    return { ok: false, error: `המרחק המרבי לרישום הוא ${MAX_QUICK_DISTANCE_METERS / 1000} ק״מ.` };
+  }
+  if (activity === 'pushups' && rounded > MAX_QUICK_PUSHUPS) {
+    return { ok: false, error: `המספר המרבי לרישום הוא ${MAX_QUICK_PUSHUPS} חזרות.` };
+  }
+
+  if (supabaseConfigured) {
+    const supabase = await createClient();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    if (!authUser || authUser.id !== userId) {
+      return { ok: false, error: 'אין הרשאה לרשום פעילות עבור משתמש אחר.' };
+    }
+  }
+
+  const log = await insertQuickLog({ user_id: userId, activity, value: rounded });
+  revalidatePath('/participant');
+  revalidatePath('/');
+  return { ok: true, data: log };
+}
+
+/** Only the athlete who logged it may remove it. */
+export async function removeQuickLog(logId: string, userId: string): Promise<ActionResult<null>> {
+  if (!logId || !userId) return { ok: false, error: 'חסרה פעילות או משתמש.' };
+
+  const owner = await getQuickLogOwner(logId);
+  if (!owner) return { ok: false, error: 'הפעילות לא נמצאה.' };
+  if (owner.user_id !== userId) return { ok: false, error: 'ניתן למחוק רק פעילות שרשמתם.' };
+
+  if (supabaseConfigured) {
+    const supabase = await createClient();
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+    if (!authUser || authUser.id !== userId) {
+      return { ok: false, error: 'אין הרשאה למחוק פעילות זו.' };
+    }
+  }
+
+  await deleteQuickLog(logId);
+  revalidatePath('/participant');
+  revalidatePath('/');
+  return { ok: true, data: null };
 }
 
 /* --------------------------------------------------------- social feed */

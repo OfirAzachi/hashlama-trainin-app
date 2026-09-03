@@ -315,6 +315,18 @@ export default function StrengthLogger({
   const config = session.points_game;
 
   const fixedExercises = config ? hasFixedExercises(config.catalog) : false;
+  /** 3 premade difficulty tiers — the participant picks one, picks exercises within it, and presses done. No numbers to type. */
+  const tiered = Boolean(config && !fixedExercises && config.tiers && config.tiers.length === 3);
+  const tiers = tiered ? config!.tiers! : [];
+
+  const [selectedTierIndex, setSelectedTierIndex] = useState<number | null>(() => {
+    if (!tiered || myLogs.length === 0) return null;
+    const usedExercise = findExercise(myLogs[0].exercise_id);
+    if (!usedExercise) return null;
+    const index = tiers.findIndex((tier) => tier.level === usedExercise.level);
+    return index === -1 ? null : index;
+  });
+  const selectedTier = selectedTierIndex != null ? tiers[selectedTierIndex] : null;
 
   const [drafts, setDrafts] = useState<RoundDraft[]>(() => {
     const rounds = config ? roundCount(config) : 0;
@@ -335,10 +347,16 @@ export default function StrengthLogger({
 
   const scored = useMemo(
     () =>
-      drafts.map((draft) => {
+      drafts.map((draft, index) => {
         const exercise = draft.exerciseId ? findExercise(draft.exerciseId) : undefined;
         // Warm-up/cool-down: no points, no numeric input — "done" is done.
         if (fixedExercises) return { exercise, reps: 0, points: 0 };
+        // Tiered: reps are premade by the tier, not typed — just pick the exercise.
+        if (tiered) {
+          if (!exercise || !selectedTier) return { exercise, reps: 0, points: 0 };
+          const reps = selectedTier.round_reps[index] ?? 0;
+          return { exercise, reps, points: Math.round(reps * selectedTier.level * genderMultiplier(participant.gender)) };
+        }
         const raw = Number(draft.raw);
         if (!exercise || !Number.isFinite(raw) || raw <= 0) {
           return { exercise, reps: 0, points: 0 };
@@ -346,11 +364,12 @@ export default function StrengthLogger({
         const reps = repsFromRaw(exercise, raw);
         return { exercise, reps, points: Math.round(reps * exercise.level * genderMultiplier(participant.gender)) };
       }),
-    [drafts, fixedExercises, participant.gender],
+    [drafts, fixedExercises, tiered, selectedTier, participant.gender],
   );
 
   const myTotal = scored.reduce((sum, entry) => sum + entry.points, 0);
   const alreadyCompleted = fixedExercises && myLogs.length > 0;
+  const tieredCompleted = tiered && myLogs.length > 0;
   const filled = fixedExercises
     ? (alreadyCompleted ? drafts.length : 0)
     : scored.filter((entry) => entry.points > 0).length;
@@ -414,6 +433,57 @@ export default function StrengthLogger({
       startTransition(() => router.refresh());
       if (onFinished) {
         // Give the "האימון הושלם" confirmation a moment on screen before leaving.
+        window.setTimeout(onFinished, 1200);
+      }
+    },
+    onError: (mutationError: Error) => {
+      setSaved(null);
+      setError(mutationError.message);
+    },
+  });
+
+  /**
+   * Tiered strength/endurance: the participant already picked their tier and
+   * an exercise per round — reps are premade by the tier, so there's nothing
+   * left to type. One press logs every round at once, at the reps the tier
+   * prescribes for it.
+   */
+  const saveTiered = useMutation({
+    mutationFn: async () => {
+      if (!selectedTier) throw new Error('בחרו רמת קושי לפני השליחה.');
+      const entries = drafts
+        .map((draft, index) => ({ draft, index }))
+        .filter(({ draft }) => draft.exerciseId)
+        .map(({ draft, index }) => {
+          const exercise = findExercise(draft.exerciseId!)!;
+          const reps = selectedTier.round_reps[index] ?? 0;
+          return {
+            session_id: session.id,
+            user_id: participant.id,
+            round_index: index,
+            exercise_id: draft.exerciseId!,
+            raw_value: reps * exercise.unitsPerRep,
+          };
+        });
+
+      if (entries.length === 0) {
+        throw new Error('בחרו תרגיל לפחות בסבב אחד.');
+      }
+
+      const isKamExempt = participant.km_levels.length > 0;
+      if (!isKamExempt && entries.length < drafts.length) {
+        throw new Error('יש לבחור תרגיל לכל הסבבים לפני השליחה. מי שבמצב כמ יכול לדלג על סבבים.');
+      }
+
+      const result = await submitStrengthWorkout(entries);
+      if (!result.ok) throw new Error(result.error);
+      return result.data;
+    },
+    onSuccess: (created) => {
+      setError(null);
+      setSaved(created.reduce((sum, log) => sum + log.points, 0));
+      startTransition(() => router.refresh());
+      if (onFinished) {
         window.setTimeout(onFinished, 1200);
       }
     },
@@ -495,9 +565,11 @@ export default function StrengthLogger({
           <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs text-accent">
             {fixedExercises
               ? 'אלה התרגילים לאימון — אין צורך לסמן כל אחד בנפרד. עברו עליהם ולחצו על "סימון האימון כהושלם" בסוף.'
-              : 'נקודות = חזרות × רמה. בתרגילים סטטיים: כל 5 שניות = חזרה אחת. זחילת דוב: כל 2 מטר = חזרה אחת.'}
+              : tiered
+                ? 'בחרו רמת קושי, בחרו תרגיל לכל סבב בתוך הרמה, ולחצו על "סיום האימון". החזרות כבר קבועות מראש.'
+                : 'נקודות = חזרות × רמה. בתרגילים סטטיים: כל 5 שניות = חזרה אחת. זחילת דוב: כל 2 מטר = חזרה אחת.'}
           </p>
-          {fixedExercises ? null : (
+          {fixedExercises || tiered ? null : (
             <p className="text-[11px] text-muted">
               הטיימר הוא כלי עזר בלבד — לא חובה להפעיל אותו. אפשר למלא מספרים ולסיים את האימון בכל שלב.
             </p>
@@ -508,8 +580,34 @@ export default function StrengthLogger({
         </div>
       </Card>
 
+      {/* ---------------------------------------------------- tier picker */}
+      {tiered && !tieredCompleted ? (
+        <Card className="card-pad space-y-3">
+          <h3 className="text-sm font-semibold text-ink">בחרו רמת קושי</h3>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {tiers.map((tier, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => setSelectedTierIndex(index)}
+                aria-pressed={selectedTierIndex === index}
+                className={cn(
+                  'rounded-2xl border p-3 text-start transition-colors',
+                  selectedTierIndex === index
+                    ? 'border-accent bg-accent/5 ring-1 ring-accent/30'
+                    : 'border-line bg-surface hover:bg-elevated',
+                )}
+              >
+                <span className="block text-sm font-semibold text-ink">{tier.name}</span>
+                <span className="mt-0.5 block text-xs text-muted">רמה {tier.level} · ×{tier.level} נקודות</span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
       {/* ---------------------------------------------------- timer */}
-      {fixedExercises ? null : (
+      {fixedExercises || tiered ? null : (
         <IntervalTimer
           workSeconds={config.round_work_seconds}
           restSeconds={config.round_rest_seconds}
@@ -522,6 +620,7 @@ export default function StrengthLogger({
       )}
 
       {/* ---------------------------------------------------- rounds */}
+      {tiered && selectedTierIndex === null ? null : (
       <ol className="space-y-3">
         {drafts.map((draft, index) => {
           const entry = scored[index];
@@ -597,7 +696,32 @@ export default function StrengthLogger({
                       <ExerciseDemoButton exercise={exercise} />
                     </div>
 
-                    {fixedExercises ? null : (
+                    {tiered ? (
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs text-muted tnum">
+                          {selectedTier?.round_reps[index] ?? 0} {unitLabel(exercise)} (קבוע — רמת {selectedTier?.name}) ={' '}
+                          <span className="font-semibold text-ink">{entry.points} נקודות</span>
+                        </p>
+                        {!tieredCompleted ? (
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              className="btn-ghost px-2 py-1 text-xs"
+                              onClick={() => setPickerRound(index)}
+                            >
+                              החלפת תרגיל
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-ghost px-2 py-1 text-xs text-rose-500"
+                              onClick={() => clearRound(index)}
+                            >
+                              ניקוי
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : fixedExercises ? null : (
                       <>
                         <div className="flex items-center gap-2">
                           <button
@@ -664,6 +788,7 @@ export default function StrengthLogger({
           );
         })}
       </ol>
+      )}
 
       {/* -------------------------------------------------- team score */}
       {fixedExercises ? null : (
@@ -741,6 +866,27 @@ export default function StrengthLogger({
                 {completeAll.isPending ? 'מסיים…' : 'סימון האימון כהושלם'}
               </button>
             )
+          ) : tiered ? (
+            tieredCompleted ? (
+              <Badge tone="positive" className="ms-auto">
+                <CheckCircle2 aria-hidden className="h-3.5 w-3.5" />
+                האימון הושלם
+              </Badge>
+            ) : (
+              <button
+                type="button"
+                className="btn-primary ms-auto"
+                onClick={() => saveTiered.mutate()}
+                disabled={saveTiered.isPending || !selectedTier}
+              >
+                {saveTiered.isPending ? (
+                  <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save aria-hidden className="h-4 w-4" />
+                )}
+                {saveTiered.isPending ? 'מסיים…' : 'סיום האימון'}
+              </button>
+            )
           ) : (
             <button
               type="button"
@@ -764,7 +910,7 @@ export default function StrengthLogger({
           catalog={config.catalog}
           round={pickerRound}
           category={config.round_categories[pickerRound]}
-          allowedLevels={config.allowed_levels}
+          allowedLevels={tiered && selectedTier ? [selectedTier.level] : config.allowed_levels}
           onPick={(exercise) => pick(pickerRound, exercise)}
           onClose={() => setPickerRound(null)}
         />

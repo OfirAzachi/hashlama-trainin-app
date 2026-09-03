@@ -41,7 +41,7 @@ import { Badge, Card } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 import { ExerciseDemoButton, LevelBadge } from '@/components/ExerciseDemo';
 import { formatDate } from '@/lib/format';
-import { PACE_CATEGORIES, PACE_LABELS, PACE_MULTIPLIER, plannedDistance, plannedPoints } from '@/lib/running';
+import { PACE_CATEGORIES, PACE_LABELS, PACE_MULTIPLIER, buildSimpleSegment, plannedDistance, plannedPoints } from '@/lib/running';
 import {
   availableExercises as availableCatalogExercises,
   catalogCategories,
@@ -57,6 +57,7 @@ import { GROUP_LIST } from '@/lib/groups';
 import type {
   CatalogKind,
   CategoryId,
+  DifficultyTier,
   GroupId,
   MetricType,
   RunningSegment,
@@ -197,6 +198,23 @@ function toSegment(draft: SegmentDraft, index: number): Omit<RunningSegment, 'id
     pace_category: draft.pace_category,
     recovery_seconds: Math.max(0, Math.round(Number(draft.recovery) || 0)),
   };
+}
+
+/** The 3 premade difficulty tiers a simplified strength/endurance game starts with. */
+function defaultTiers(rounds: number): DifficultyTier[] {
+  return [
+    { name: 'מתחילים', level: 1, round_reps: Array(rounds).fill(8) },
+    { name: 'בינוני', level: 2, round_reps: Array(rounds).fill(10) },
+    { name: 'מתקדם', level: 3, round_reps: Array(rounds).fill(12) },
+  ];
+}
+
+/** Resizes every tier's `round_reps` to match a new round count, keeping existing values. */
+function resizeTiers(tiers: DifficultyTier[], rounds: number): DifficultyTier[] {
+  return tiers.map((tier) => ({
+    ...tier,
+    round_reps: Array.from({ length: rounds }, (_, i) => tier.round_reps[i] ?? tier.round_reps[tier.round_reps.length - 1] ?? 10),
+  }));
 }
 
 /** Fills N rounds by cycling through a catalogue's categories in order. */
@@ -367,8 +385,10 @@ export default function WeeklyTrainingBuilder({
   const [cooldownRestSeconds, setCooldownRestSeconds] = useState<number[]>(() => Array(4).fill(20));
 
   const [trainingType, setTrainingType] = useState<TrainingType>('running');
-  const [runMode, setRunMode] = useState<'intervals' | 'steady'>('intervals');
+  const [runMode, setRunMode] = useState<'intervals' | 'steady' | 'simple'>('intervals');
   const [segments, setSegments] = useState<SegmentDraft[]>([blankSegment()]);
+  /** Simple mode: just a distance — no pace, repeats or recovery to set. */
+  const [simpleDistance, setSimpleDistance] = useState('3000');
   /** Shown as an "אופציונלי" badge to participants — set automatically by the two presets, or toggled manually. */
   const [isOptional, setIsOptional] = useState(false);
   /** Which TYPE_CARDS entry is highlighted — distinct from trainingType, since two cards (plain "ריצה" and "ריצה (פשוטה)") share the same type. */
@@ -383,6 +403,9 @@ export default function WeeklyTrainingBuilder({
   const [roundExerciseIds, setRoundExerciseIds] = useState<string[]>([]);
   const [openLevels, setOpenLevels] = useState<StrengthLevel[]>([1, 2, 3]);
   const [previewCategory, setPreviewCategory] = useState<CategoryId>('lower');
+  /** Simplified strength/endurance flow: 3 premade difficulty tiers instead of free levels + typed reps. */
+  const [useTiers, setUseTiers] = useState(false);
+  const [tiers, setTiers] = useState<DifficultyTier[]>(() => defaultTiers(6));
 
   useEffect(() => {
     fetchSessionTemplates().then((result) => {
@@ -406,8 +429,10 @@ export default function WeeklyTrainingBuilder({
   const canContinueFromStep2 = isGameType(trainingType)
     ? fixedExercises
       ? roundExerciseIds.length > 0
-      : roundCategories.length > 0 && openLevels.length > 0
-    : validSegments.length > 0;
+      : roundCategories.length > 0 && (useTiers ? tiers.length === 3 : openLevels.length > 0)
+    : runMode === 'simple'
+      ? Number(simpleDistance) > 0
+      : validSegments.length > 0;
   const roundsTotal = fixedExercises ? roundExerciseIds.length : roundCategories.length;
 
   const updateSegment = (uid: string, patch: Partial<SegmentDraft>) =>
@@ -469,17 +494,37 @@ export default function WeeklyTrainingBuilder({
     setRoundRestSeconds((current) => current.map((entry, i) => (i === index ? seconds : entry)));
 
   const addRound = () => {
-    setRoundCategories((current) => [
-      ...current,
-      gameCategories[current.length % gameCategories.length]?.id ?? gameCategories[0].id,
-    ]);
+    setRoundCategories((current) => {
+      const next = [
+        ...current,
+        gameCategories[current.length % gameCategories.length]?.id ?? gameCategories[0].id,
+      ];
+      setTiers((currentTiers) => resizeTiers(currentTiers, next.length));
+      return next;
+    });
     addRoundTiming();
   };
 
   const removeRound = (index: number) => {
-    setRoundCategories((current) => current.filter((_, i) => i !== index));
+    setRoundCategories((current) => {
+      const next = current.filter((_, i) => i !== index);
+      setTiers((currentTiers) => resizeTiers(currentTiers, next.length));
+      return next;
+    });
     removeRoundTiming(index);
   };
+
+  const updateTierReps = (tierIndex: number, roundIndex: number, reps: number) =>
+    setTiers((current) =>
+      current.map((tier, i) =>
+        i === tierIndex
+          ? { ...tier, round_reps: tier.round_reps.map((r, ri) => (ri === roundIndex ? reps : r)) }
+          : tier,
+      ),
+    );
+
+  const updateTierLevel = (tierIndex: number, level: StrengthLevel) =>
+    setTiers((current) => current.map((tier, i) => (i === tierIndex ? { ...tier, level } : tier)));
 
   const updateRoundExercise = (index: number, exerciseId: string) =>
     setRoundExerciseIds((current) => current.map((entry, i) => (i === index ? exerciseId : entry)));
@@ -522,6 +567,9 @@ export default function WeeklyTrainingBuilder({
 
     if (source.training_type === 'running' && source.running) {
       setRunMode(source.running.mode);
+      if (source.running.mode === 'simple') {
+        setSimpleDistance(String(source.running.segments[0]?.distance_meters ?? 3000));
+      }
       setSegments(
         source.running.segments.length > 0
           ? source.running.segments.map((segment) => ({
@@ -545,6 +593,8 @@ export default function WeeklyTrainingBuilder({
         setRoundCategories(config.round_categories);
         setOpenLevels(config.allowed_levels);
         setPreviewCategory(config.round_categories[0] ?? defaultCategories(config.catalog)[0]);
+        setUseTiers(Boolean(config.tiers && config.tiers.length === 3));
+        if (config.tiers && config.tiers.length === 3) setTiers(config.tiers);
       }
     }
   };
@@ -606,6 +656,9 @@ export default function WeeklyTrainingBuilder({
     setTrainingType('running');
     setRunMode('intervals');
     setSegments([blankSegment()]);
+    setSimpleDistance('3000');
+    setUseTiers(false);
+    setTiers(defaultTiers(6));
     setIsOptional(false);
     setSelectedCardKey('running-');
   };
@@ -668,18 +721,21 @@ export default function WeeklyTrainingBuilder({
               round_rest_seconds: roundRestSeconds,
               round_categories: fixedExercises ? [] : roundCategories,
               round_exercise_ids: fixedExercises ? roundExerciseIds : [],
-              allowed_levels: fixedExercises ? [] : openLevels,
+              allowed_levels: fixedExercises ? [] : useTiers ? [...new Set(tiers.map((t) => t.level))] : openLevels,
+              tiers: !fixedExercises && useTiers ? tiers : undefined,
             }
           : null,
         running:
           trainingType === 'running'
-            ? {
-                mode: runMode,
-                segments: segments
-                  .map((draft, index) => toSegment(draft, index))
-                  .filter((segment): segment is Omit<RunningSegment, 'id'> => segment !== null)
-                  .map((segment, index) => ({ id: `seg-${index + 1}`, ...segment })),
-              }
+            ? runMode === 'simple'
+              ? { mode: 'simple', segments: [{ id: 'seg-1', ...buildSimpleSegment(Number(simpleDistance)) }] }
+              : {
+                  mode: runMode,
+                  segments: segments
+                    .map((draft, index) => toSegment(draft, index))
+                    .filter((segment): segment is Omit<RunningSegment, 'id'> => segment !== null)
+                    .map((segment, index) => ({ id: `seg-${index + 1}`, ...segment })),
+                }
             : null,
         // Neither running nor the points games use per-group exercise tracks:
         // running carries its plan in segments, and a points game has
@@ -1247,9 +1303,10 @@ export default function WeeklyTrainingBuilder({
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               {(
                 [
+                  { value: 'simple' as const, title: 'פשוט', blurb: 'רק מרחק — המתאמן מזין זמן וזהו' },
                   { value: 'intervals' as const, title: 'אינטרוולים', blurb: 'כמה מקטעים בקצבים שונים' },
                   { value: 'steady' as const, title: 'ריצה אחידה', blurb: 'מקטע אחד רצוף בקצב יעד' },
                 ]
@@ -1288,6 +1345,30 @@ export default function WeeklyTrainingBuilder({
             </div>
           </Card>
 
+          {runMode === 'simple' ? (
+            <Card className="card-pad space-y-4">
+              <div>
+                <h2 className="text-base font-semibold text-ink">המרחק</h2>
+                <p className="mt-1 text-sm text-muted">
+                  קובעים כמה מטר לרוץ. המתאמן פשוט מזין כמה זמן זה לקח לו וזהו — בלי קצב, בלי חזרות.
+                </p>
+              </div>
+              <label className="space-y-1.5">
+                <span className="text-sm font-medium text-ink">מרחק (מטר)</span>
+                <input
+                  className="input h-11 tnum"
+                  inputMode="numeric"
+                  aria-label="מרחק הריצה במטרים"
+                  value={simpleDistance}
+                  onChange={(event) => setSimpleDistance(event.target.value.replace(/[^\d]/g, ''))}
+                />
+              </label>
+              <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs text-accent tnum">
+                נקודות = (מטרים ÷ 100) × מכפיל מגדר. הניקוד מבוסס על המרחק שנקבע — זמן הריצה נשמר
+                לתיעוד האישי של המתאמן ולא משנה את הניקוד.
+              </p>
+            </Card>
+          ) : (
           <Card className="card-pad space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-base font-semibold text-ink">
@@ -1458,6 +1539,7 @@ export default function WeeklyTrainingBuilder({
               נכנסת ישר לטבלת הקבוצות בעמוד הבית.
             </p>
           </Card>
+          )}
 
           {publish.isError ? (
             <p role="alert" className="flex items-center gap-2 text-sm text-rose-600 dark:text-rose-400">
@@ -1664,25 +1746,102 @@ export default function WeeklyTrainingBuilder({
                 הוספת סבב
               </button>
 
-              <div className="flex flex-wrap gap-2">
-                {([1, 2, 3] as StrengthLevel[]).map((level) => {
-                  const on = openLevels.includes(level);
-                  return (
-                    <button
-                      key={level}
-                      type="button"
-                      onClick={() => toggleLevel(level)}
-                      aria-pressed={on}
-                      className={cn(
-                        'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
-                        on ? 'border-accent text-accent' : 'border-line text-muted',
-                      )}
-                    >
-                      רמה {level} · ×{level} נקודות
-                    </button>
-                  );
-                })}
-              </div>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={useTiers}
+                  onChange={(event) => setUseTiers(event.target.checked)}
+                />
+                מצב מדורג — 3 רמות קושי מוכנות מראש
+                <span className="text-xs font-normal text-muted">
+                  — המתאמן בוחר רמה אחת, בוחר תרגילים, ולוחץ סיום. בלי הזנת מספרים.
+                </span>
+              </label>
+
+              {useTiers ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-muted">
+                    לכל רמה: רמת קושי קבועה לכל הסבבים, וכמות חזרות מוכנה מראש לכל סבב — המתאמן לא
+                    מקליד כלום, רק בוחר את התרגיל שלו בתוך הרמה.
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[420px] border-collapse text-sm">
+                      <thead>
+                        <tr>
+                          <th className="p-1.5 text-start text-xs font-medium text-muted">סבב</th>
+                          {tiers.map((tier, tierIndex) => (
+                            <th key={tierIndex} className="p-1.5 text-center">
+                              <input
+                                className="input w-full py-1 text-center text-xs font-semibold"
+                                aria-label={`שם רמה ${tierIndex + 1}`}
+                                value={tier.name}
+                                onChange={(event) =>
+                                  setTiers((current) =>
+                                    current.map((t, i) => (i === tierIndex ? { ...t, name: event.target.value } : t)),
+                                  )
+                                }
+                              />
+                              <select
+                                className="input mt-1 w-full py-1 text-center text-xs"
+                                aria-label={`רמת קושי ${tier.name}`}
+                                value={tier.level}
+                                onChange={(event) => updateTierLevel(tierIndex, Number(event.target.value) as StrengthLevel)}
+                              >
+                                {[1, 2, 3].map((level) => (
+                                  <option key={level} value={level}>
+                                    רמה {level}
+                                  </option>
+                                ))}
+                              </select>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {roundCategories.map((_, roundIndex) => (
+                          <tr key={roundIndex} className="border-t border-line">
+                            <td className="p-1.5 text-xs font-semibold text-muted tnum">{roundIndex + 1}</td>
+                            {tiers.map((tier, tierIndex) => (
+                              <td key={tierIndex} className="p-1.5">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  className="input w-full py-1 text-center tnum"
+                                  aria-label={`חזרות — ${tier.name} — סבב ${roundIndex + 1}`}
+                                  value={tier.round_reps[roundIndex] ?? 0}
+                                  onChange={(event) =>
+                                    updateTierReps(tierIndex, roundIndex, Math.max(1, Number(event.target.value) || 1))
+                                  }
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {([1, 2, 3] as StrengthLevel[]).map((level) => {
+                    const on = openLevels.includes(level);
+                    return (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => toggleLevel(level)}
+                        aria-pressed={on}
+                        className={cn(
+                          'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                          on ? 'border-accent text-accent' : 'border-line text-muted',
+                        )}
+                      >
+                        רמה {level} · ×{level} נקודות
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </Card>
           )}
 

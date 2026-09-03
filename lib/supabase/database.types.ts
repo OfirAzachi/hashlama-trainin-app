@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.5"
   }
   graphql_public: {
     Tables: {
@@ -116,39 +116,6 @@ export type Database = {
           exercise_id?: string
           gif_url?: string
           updated_at?: string
-        }
-        Relationships: []
-      }
-      session_templates: {
-        Row: {
-          id: string
-          training_type: string
-          title: string
-          description: string
-          workout_instructions: string
-          points_game: Json | null
-          running: Json | null
-          created_at: string
-        }
-        Insert: {
-          id: string
-          training_type: string
-          title: string
-          description?: string
-          workout_instructions?: string
-          points_game?: Json | null
-          running?: Json | null
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          training_type?: string
-          title?: string
-          description?: string
-          workout_instructions?: string
-          points_game?: Json | null
-          running?: Json | null
-          created_at?: string
         }
         Relationships: []
       }
@@ -277,6 +244,44 @@ export type Database = {
           {
             foreignKeyName: "notifications_recipient_id_fkey"
             columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quick_logs: {
+        Row: {
+          activity: Database["public"]["Enums"]["quick_activity"]
+          created_at: string
+          distance_meters: number | null
+          id: string
+          points: number
+          reps: number | null
+          user_id: string
+        }
+        Insert: {
+          activity: Database["public"]["Enums"]["quick_activity"]
+          created_at?: string
+          distance_meters?: number | null
+          id?: string
+          points?: number
+          reps?: number | null
+          user_id: string
+        }
+        Update: {
+          activity?: Database["public"]["Enums"]["quick_activity"]
+          created_at?: string
+          distance_meters?: number | null
+          id?: string
+          points?: number
+          reps?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quick_logs_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
@@ -599,6 +604,39 @@ export type Database = {
           },
         ]
       }
+      session_templates: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          points_game: Json | null
+          running: Json | null
+          title: string
+          training_type: string
+          workout_instructions: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string
+          id: string
+          points_game?: Json | null
+          running?: Json | null
+          title: string
+          training_type: string
+          workout_instructions?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          points_game?: Json | null
+          running?: Json | null
+          title?: string
+          training_type?: string
+          workout_instructions?: string
+        }
+        Relationships: []
+      }
       session_tracks: {
         Row: {
           id: string
@@ -637,6 +675,7 @@ export type Database = {
           round_rest_seconds: number[]
           round_work_seconds: number[]
           session_id: string
+          tiers: Json | null
         }
         Insert: {
           allowed_levels?: number[]
@@ -646,6 +685,7 @@ export type Database = {
           round_rest_seconds?: number[]
           round_work_seconds?: number[]
           session_id: string
+          tiers?: Json | null
         }
         Update: {
           allowed_levels?: number[]
@@ -655,6 +695,7 @@ export type Database = {
           round_rest_seconds?: number[]
           round_work_seconds?: number[]
           session_id?: string
+          tiers?: Json | null
         }
         Relationships: [
           {
@@ -921,8 +962,9 @@ export type Database = {
     Enums: {
       catalog_kind: "strength" | "endurance" | "warmup" | "cooldown"
       metric_type: "reps" | "time_seconds" | "distance_meters" | "weight_kg"
+      quick_activity: "running" | "pushups"
       roster_grade: "V" | "X" | "חסר"
-      run_mode: "intervals" | "steady"
+      run_mode: "intervals" | "steady" | "simple"
       run_pace_category: "walk" | "talk" | "borg" | "sprint"
       strength_category:
         | "lower"
@@ -964,12 +1006,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -993,11 +1035,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1018,11 +1060,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1043,11 +1085,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1060,11 +1102,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1081,8 +1123,9 @@ export const Constants = {
     Enums: {
       catalog_kind: ["strength", "endurance", "warmup", "cooldown"],
       metric_type: ["reps", "time_seconds", "distance_meters", "weight_kg"],
+      quick_activity: ["running", "pushups"],
       roster_grade: ["V", "X", "חסר"],
-      run_mode: ["intervals", "steady"],
+      run_mode: ["intervals", "steady", "simple"],
       run_pace_category: ["walk", "talk", "borg", "sprint"],
       strength_category: [
         "lower",
@@ -1102,7 +1145,14 @@ export const Constants = {
       ],
       strength_unit: ["reps", "seconds", "meters"],
       test_type: ["initial", "final"],
-      training_type: ["running", "endurance", "strength", "warmup", "cooldown", "log"],
+      training_type: [
+        "running",
+        "endurance",
+        "strength",
+        "warmup",
+        "cooldown",
+        "log",
+      ],
       user_role: ["trainer", "participant"],
     },
   },

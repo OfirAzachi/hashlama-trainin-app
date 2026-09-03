@@ -30,6 +30,29 @@ import type {
 
 export const PACE_CATEGORIES: RunPaceCategory[] = ['walk', 'talk', 'borg', 'sprint'];
 
+/**
+ * The simplified running flow scores purely on the distance the trainer set
+ * — points = (metres / 100) x gender multiplier, the same base term as every
+ * other pace category but with the x1 (walk) weight, since there's no pace
+ * category for the participant to be judged against. The time they enter is
+ * kept for their own record (and shown as a derived pace) but never changes
+ * the score — the trainer, not a self-reported time, controls difficulty by
+ * setting the distance.
+ */
+export const SIMPLE_PACE_CATEGORY: RunPaceCategory = 'walk';
+
+/** Builds the single segment a "simple" running training carries. */
+export function buildSimpleSegment(distanceMeters: number): Omit<RunningSegment, 'id'> {
+  return {
+    label: 'ריצה',
+    target_group: 'all',
+    repeats: 1,
+    distance_meters: Math.max(1, Math.round(distanceMeters)),
+    pace_category: SIMPLE_PACE_CATEGORY,
+    recovery_seconds: 0,
+  };
+}
+
 export const PACE_LABELS: Record<RunPaceCategory, string> = {
   walk: 'הליכה',
   talk: 'ריצה קלה מאוד (קצב דיבור)',
