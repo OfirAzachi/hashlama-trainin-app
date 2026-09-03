@@ -1364,7 +1364,7 @@ export default function WeeklyTrainingBuilder({
                 />
               </label>
               <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs text-accent tnum">
-                נקודות = (מטרים ÷ 100) × מכפיל מגדר. הניקוד מבוסס על המרחק שנקבע — זמן הריצה נשמר
+                20 נקודות לכל ק״מ × מכפיל מגדר. הניקוד מבוסס על המרחק שנקבע — זמן הריצה נשמר
                 לתיעוד האישי של המתאמן ולא משנה את הניקוד.
               </p>
             </Card>

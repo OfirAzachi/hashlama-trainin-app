@@ -474,7 +474,7 @@ export interface StrengthSnapshot {
  * The pace a segment is run at, prescribed qualitatively rather than as a
  * number — the trainer dictates effort, not a pace-per-km target.
  */
-export type RunPaceCategory = 'walk' | 'talk' | 'borg' | 'sprint';
+export type RunPaceCategory = 'walk' | 'talk' | 'borg' | 'sprint' | 'simple';
 
 /**
  * One prescribed piece of a running training: N repeats of a distance at a

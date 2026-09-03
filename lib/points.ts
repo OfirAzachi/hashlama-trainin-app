@@ -57,10 +57,8 @@ export function scoreEntry(
 /**
  * Points for one self-logged activity, mirroring the quick_logs trigger
  * exactly (client-side preview only — the database is the authority):
- *   running — round(metres / 100) x gender multiplier
+ *   running — round(metres / 100) x 2 x gender multiplier  (20 pts per km)
  *   pushups — reps x 1 x gender multiplier
- * Both at the base weight, since these numbers are self-reported and carry no
- * trainer-set pace category or chosen exercise level.
  */
 export function quickLogPoints(
   activity: QuickActivity,
@@ -68,7 +66,7 @@ export function quickLogPoints(
   gender?: string | null,
 ): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
-  const base = activity === 'running' ? Math.round(value / 100) : value;
+  const base = activity === 'running' ? Math.round(value / 100) * 2 : value;
   return Math.round(base * genderMultiplier(gender));
 }
 

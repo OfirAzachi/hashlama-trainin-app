@@ -965,7 +965,7 @@ export type Database = {
       quick_activity: "running" | "pushups"
       roster_grade: "V" | "X" | "חסר"
       run_mode: "intervals" | "steady" | "simple"
-      run_pace_category: "walk" | "talk" | "borg" | "sprint"
+      run_pace_category: "walk" | "talk" | "borg" | "sprint" | "simple"
       strength_category:
         | "lower"
         | "push"
@@ -1126,7 +1126,7 @@ export const Constants = {
       quick_activity: ["running", "pushups"],
       roster_grade: ["V", "X", "חסר"],
       run_mode: ["intervals", "steady", "simple"],
-      run_pace_category: ["walk", "talk", "borg", "sprint"],
+      run_pace_category: ["walk", "talk", "borg", "sprint", "simple"],
       strength_category: [
         "lower",
         "push",

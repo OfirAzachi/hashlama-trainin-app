@@ -31,15 +31,15 @@ import type {
 export const PACE_CATEGORIES: RunPaceCategory[] = ['walk', 'talk', 'borg', 'sprint'];
 
 /**
- * The simplified running flow scores purely on the distance the trainer set
- * — points = (metres / 100) x gender multiplier, the same base term as every
- * other pace category but with the x1 (walk) weight, since there's no pace
- * category for the participant to be judged against. The time they enter is
- * kept for their own record (and shown as a derived pace) but never changes
- * the score — the trainer, not a self-reported time, controls difficulty by
- * setting the distance.
+ * The simplified running flow scores purely on the distance the trainer set:
+ * 20 points per kilometre, x gender multiplier. Its own pace category (never
+ * offered in the builder's pace dropdown — see PACE_CATEGORIES) carries that
+ * weight, so the score is explicit rather than borrowing another category's
+ * label. The time the athlete enters is kept for their own record (and shown
+ * as a derived pace) but never changes the score — the trainer, not a
+ * self-reported time, controls difficulty by setting the distance.
  */
-export const SIMPLE_PACE_CATEGORY: RunPaceCategory = 'walk';
+export const SIMPLE_PACE_CATEGORY: RunPaceCategory = 'simple';
 
 /** Builds the single segment a "simple" running training carries. */
 export function buildSimpleSegment(distanceMeters: number): Omit<RunningSegment, 'id'> {
@@ -58,14 +58,20 @@ export const PACE_LABELS: Record<RunPaceCategory, string> = {
   talk: 'ריצה קלה מאוד (קצב דיבור)',
   borg: 'ריצה קלה (קצב בראור)',
   sprint: 'ספרינט',
+  simple: 'ריצה למרחק',
 };
 
-/** Points multiplier per pace category — faster prescribed effort scores more. */
+/**
+ * Points multiplier per pace category — faster prescribed effort scores more.
+ * Each unit is a point per 100m, so `simple` (2) is the 20-points-per-kilometre
+ * rate. Mirrors compute_running_points in the database exactly.
+ */
 export const PACE_MULTIPLIER: Record<RunPaceCategory, number> = {
   walk: 1,
   talk: 2,
   borg: 3,
   sprint: 4,
+  simple: 2,
 };
 
 export function segmentDistance(segment: RunningSegment, repeatsDone?: number): number {
