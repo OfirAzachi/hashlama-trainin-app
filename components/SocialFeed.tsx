@@ -34,7 +34,7 @@ import {
 } from '@/app/actions';
 import { Avatar, Badge, Card, EmptyState, GroupBadge } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
-import { compactCount, formatRelativeTime } from '@/lib/format';
+import { compactCount, formatRelativeTime, trainerLabel } from '@/lib/format';
 import { GROUP_LIST } from '@/lib/groups';
 import { fileToDataUrl } from '@/lib/image-resize';
 import { renderFormattedText } from '@/lib/richtext';
@@ -689,6 +689,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
       {/* comments */}
       {comments.length > 0 ? (
         <div className="space-y-1.5 border-t border-line px-4 pb-2 pt-2">
+          <p className="text-xs font-semibold text-muted">תגובות</p>
           {comments.length > 2 && !showAllComments ? (
             <button
               type="button"
@@ -707,7 +708,7 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
                   <span className="text-ink/90">{renderCommentBody(comment.body)}</span>
                   {author.role === 'trainer' ? (
                     <Badge tone="accent" className="ms-1.5 align-middle">
-                      מאמנת
+                      {trainerLabel(author.gender)}
                     </Badge>
                   ) : null}
                 </span>

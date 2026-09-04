@@ -1004,7 +1004,7 @@ export default function WeeklyTrainingBuilder({
                       const session = pastSessions.find((entry) => entry.id === loadedFromSessionId);
                       if (
                         !window.confirm(
-                          `למחוק את "${session?.title ?? 'האימון'}"? הפעולה לא ניתנת לביטול, ותיחסם אם כבר יש לו תוצאות רשומות.`,
+                          `למחוק את "${session?.title ?? 'האימון'}"? כל התוצאות שנרשמו לאימון הזה יימחקו יחד איתו, והנקודות עליהן ירדו מהקבוצות. הפעולה לא ניתנת לביטול.`,
                         )
                       ) {
                         return;
@@ -1566,7 +1566,7 @@ export default function WeeklyTrainingBuilder({
               )}
               {publish.isPending
                 ? editingSessionId
-                  ? 'שומרת…'
+                  ? 'שומר…'
                   : 'מפרסם…'
                 : editingSessionId
                   ? 'שמירת השינויים'
@@ -1999,7 +1999,7 @@ export default function WeeklyTrainingBuilder({
                 )}
                 {publish.isPending
                 ? editingSessionId
-                  ? 'שומרת…'
+                  ? 'שומר…'
                   : 'מפרסם…'
                 : editingSessionId
                   ? 'שמירת השינויים'

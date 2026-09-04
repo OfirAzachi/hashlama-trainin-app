@@ -2,8 +2,7 @@
 
 import { useMutation } from '@tanstack/react-query';
 import { CheckCircle2, Dumbbell, Footprints, Loader2, Plus, Trash2, TriangleAlert } from 'lucide-react';
-import { startTransition, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 import { addQuickLog, removeQuickLog } from '@/app/actions';
 import { Badge, Card, CardHeader } from '@/components/ui/primitives';
@@ -55,14 +54,13 @@ export default function QuickLogCard({
   participant: Participant;
   logs: QuickLog[];
 }) {
-  const router = useRouter();
   const [activity, setActivity] = useState<QuickActivity>('running');
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<number | null>(null);
-  // The card renders from its own list so adding/removing is instant. The
-  // refresh below is only there to update the points shown elsewhere on the
-  // page — this list never waits for it.
+  // The card renders from its own list, so adding and removing land instantly
+  // with no route refresh — a refresh here would flash the page's loading UI.
+  // Points shown elsewhere on the page catch up on the next visit.
   const [entries, setEntries] = useState(logs);
 
   const active = ACTIVITIES.find((entry) => entry.value === activity)!;
@@ -81,7 +79,6 @@ export default function QuickLogCard({
       setSaved(log.points);
       setValue('');
       setEntries((current) => [log, ...current]);
-      startTransition(() => router.refresh());
     },
     onError: (mutationError: Error) => {
       setSaved(null);
@@ -99,7 +96,6 @@ export default function QuickLogCard({
       setError(null);
       setSaved(null);
       setEntries((current) => current.filter((log) => log.id !== logId));
-      startTransition(() => router.refresh());
     },
     onError: (mutationError: Error) => setError(mutationError.message),
   });

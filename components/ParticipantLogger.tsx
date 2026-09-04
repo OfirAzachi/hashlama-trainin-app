@@ -215,7 +215,7 @@ export default function ParticipantLogger({
     return (
       <Card className="card-pad">
         <p className="text-sm text-muted">
-          עדיין לא נקבע אימון לקבוצה שלך. המאמנת תפרסם את האימון הבא בקרוב.
+          עדיין לא נקבע אימון לקבוצה שלך. המאמן יפרסם את האימון הבא בקרוב.
         </p>
       </Card>
     );
@@ -377,7 +377,7 @@ export default function ParticipantLogger({
               id="notes"
               rows={3}
               className="input resize-y"
-              placeholder="איך זה הרגיש? כאבים, מזג אוויר או הערות על הקצב עבור המאמנת."
+              placeholder="איך זה הרגיש? כאבים, מזג אוויר או הערות על הקצב עבור המאמן."
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
             />
@@ -419,7 +419,7 @@ export default function ParticipantLogger({
         <CardHeader
           icon={<Camera className="h-4 w-4" />}
           title="תמונה מהאימון"
-          subtitle="צרפו תמונה מהאימון — היא תוצג למאמנת ובפיד הקבוצתי."
+          subtitle="צרפו תמונה מהאימון — היא תוצג למאמן ובפיד הקבוצתי."
         />
 
         <div className="card-pad space-y-3">

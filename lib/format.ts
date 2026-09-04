@@ -139,6 +139,14 @@ export function formatDateTime(iso: string): string {
   });
 }
 
+/**
+ * "מאמן" / "מאמנת" for a trainer, by their own gender — never assume one.
+ * Falls back to the masculine form when gender isn't on file.
+ */
+export function trainerLabel(gender: string | null | undefined): string {
+  return gender === 'נ' ? 'מאמנת' : 'מאמן';
+}
+
 export function initials(name: string): string {
   return name
     .split(' ')

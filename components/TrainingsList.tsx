@@ -213,8 +213,8 @@ export default function TrainingsList({
               <p className="text-sm text-muted tnum">
                 {roundCount(card.session.points_game)} סבבים · {describeRoundTiming(card.session.points_game)} ·{' '}
                 {hasFixedExercises(card.session.points_game.catalog)
-                  ? 'המאמנת קבעה תרגיל לכל סבב'
-                  : 'המאמנת קבעה קבוצת שריר לכל סבב'}
+                  ? 'המאמן קבע תרגיל לכל סבב'
+                  : 'המאמן קבע קבוצת שריר לכל סבב'}
               </p>
 
               {card.strengthLogs.length > 0 ? (
@@ -372,7 +372,7 @@ export default function TrainingsList({
       {trainings.length === 0 ? (
         <Card className="card-pad">
           <p className="text-sm text-muted">
-            עדיין לא פורסמו אימונים. המאמנת תעלה את אימון השבוע בקרוב.
+            עדיין לא פורסמו אימונים. המאמן יעלה את אימון השבוע בקרוב.
           </p>
         </Card>
       ) : null}

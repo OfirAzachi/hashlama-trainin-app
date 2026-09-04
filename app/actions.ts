@@ -356,12 +356,14 @@ export async function updateTrainingSessionDate(
  * refused once anyone has logged results against it, so a trainer can't
  * accidentally erase real data. RLS restricts this to trainers already.
  */
+/**
+ * A trainer can always delete a training, logged results or not — deleting it
+ * takes those results (and their points) with it, by design. Editing a
+ * training is still blocked once anyone has logged, since that would silently
+ * rescore results against a workout nobody actually did.
+ */
 export async function deleteTrainingSession(sessionId: string): Promise<ActionResult<null>> {
   if (!sessionId) return { ok: false, error: 'חסר מזהה אימון.' };
-
-  if (await sessionHasLogs(sessionId)) {
-    return { ok: false, error: 'לא ניתן למחוק אימון שכבר יש לו תוצאות רשומות ממתאמנים.' };
-  }
 
   await deleteSession(sessionId);
   revalidatePath('/trainer');
@@ -503,9 +505,9 @@ export async function addQuickLog(
     }
   }
 
+  // No revalidatePath — both pages are force-dynamic, and revalidating here
+  // flashes the route's loading UI over the page. The card updates its own list.
   const log = await insertQuickLog({ user_id: userId, activity, value: rounded });
-  revalidatePath('/participant');
-  revalidatePath('/');
   return { ok: true, data: log };
 }
 
@@ -527,9 +529,8 @@ export async function removeQuickLog(logId: string, userId: string): Promise<Act
     }
   }
 
+  // Deliberately no revalidatePath — see addQuickLog.
   await deleteQuickLog(logId);
-  revalidatePath('/participant');
-  revalidatePath('/');
   return { ok: true, data: null };
 }
 
@@ -542,8 +543,11 @@ export async function toggleMediaLike(
 ): Promise<ActionResult<{ likes: number; likedByMe: boolean }>> {
   if (!mediaId || !userId) return { ok: false, error: 'חסר פוסט או משתמש.' };
 
+  // No revalidatePath here on purpose: /feed is force-dynamic, so it re-reads
+  // on the next visit anyway, and revalidating mid-action makes the router
+  // re-render the route — which flashes app/feed/loading.tsx over the feed on
+  // every like. The card updates itself optimistically instead.
   const state = await toggleLike(mediaId, userId);
-  revalidatePath('/feed');
   return { ok: true, data: state };
 }
 
@@ -563,7 +567,7 @@ export async function addMediaComment(
   const comment = await insertComment(mediaId, userId, text);
   await notifyMentions(userId, mediaId, comment.id, text);
 
-  revalidatePath('/feed');
+  // Deliberately no revalidatePath — see toggleMediaLike.
   return { ok: true, data: comment };
 }
 
@@ -649,8 +653,8 @@ export async function deleteMediaComment(commentId: string, userId: string): Pro
     }
   }
 
+  // Deliberately no revalidatePath — see toggleMediaLike.
   await deleteComment(commentId);
-  revalidatePath('/feed');
   return { ok: true, data: null };
 }
 

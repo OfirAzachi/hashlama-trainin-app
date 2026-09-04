@@ -219,7 +219,7 @@ function ExercisePicker({
               סבב {round + 1} — {categoryInfo?.name}
             </p>
             <p className="text-xs text-muted">
-              המאמנת קבעה שבסבב הזה עובדים {categoryInfo?.name}. בחרו תרגיל שאתם יכולים לבצע בבטחה —
+              המאמן קבע שבסבב הזה עובדים {categoryInfo?.name}. בחרו תרגיל שאתם יכולים לבצע בבטחה —
               רמה גבוהה יותר = יותר נקודות לחזרה.
             </p>
           </div>
@@ -666,7 +666,7 @@ export default function StrengthLogger({
                         בחרו תרגיל — {findCategory(config.round_categories[index])?.name}
                       </span>
                       <span className="block text-xs text-muted">
-                        זו קבוצת השריר שהמאמנת קבעה לסבב הזה
+                        זו קבוצת השריר שהמאמן קבע לסבב הזה
                       </span>
                     </span>
                     <ChevronRight aria-hidden className="h-5 w-5 text-muted rtl:rotate-180" />
