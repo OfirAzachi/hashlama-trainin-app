@@ -36,6 +36,12 @@ function distanceLabel(meters: number): string {
     : `${meters} מ׳`;
 }
 
+/** The selectable values offered for one quick-log activity. */
+function optionsFor(activity: QuickActivity): number[] {
+  if (activity === 'running') return Array.from({ length: 100 }, (_, i) => (i + 1) * 100); // 100–10,000 מ'
+  return Array.from({ length: 101 }, (_, i) => i); // 0–100 חזרות
+}
+
 function logSummary(log: QuickLog): string {
   return log.activity === 'running'
     ? distanceLabel(log.distance_meters ?? 0)
@@ -137,25 +143,22 @@ export default function QuickLogCard({
 
         <label className="space-y-1.5">
           <span className="text-sm font-medium text-ink">{active.fieldLabel}</span>
-          <div className="relative">
-            <input
-              className="input h-12 pe-16 text-base tnum"
-              inputMode="numeric"
-              placeholder="0"
-              aria-label={active.fieldLabel}
-              value={value}
-              onChange={(event) => {
-                setValue(event.target.value.replace(/[^\d]/g, ''));
-                setSaved(null);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && preview > 0 && !add.isPending) add.mutate();
-              }}
-            />
-            <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs text-muted">
-              {active.unit}
-            </span>
-          </div>
+          <select
+            className="input h-12 text-base tnum"
+            aria-label={active.fieldLabel}
+            value={value}
+            onChange={(event) => {
+              setValue(event.target.value);
+              setSaved(null);
+            }}
+          >
+            <option value="">— בחרו {active.unit} —</option>
+            {optionsFor(activity).map((option) => (
+              <option key={option} value={option}>
+                {activity === 'running' ? distanceLabel(option) : option}
+              </option>
+            ))}
+          </select>
         </label>
 
         {preview > 0 ? (
