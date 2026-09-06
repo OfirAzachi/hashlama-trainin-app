@@ -1,7 +1,16 @@
 'use client';
 
 import { useMutation } from '@tanstack/react-query';
-import { CheckCircle2, Dumbbell, Footprints, Loader2, Plus, Trash2, TriangleAlert } from 'lucide-react';
+import {
+  CheckCircle2,
+  ChevronDown,
+  Dumbbell,
+  Footprints,
+  Loader2,
+  Plus,
+  Trash2,
+  TriangleAlert,
+} from 'lucide-react';
 import { useState } from 'react';
 
 import { addQuickLog, removeQuickLog } from '@/app/actions';
@@ -42,20 +51,6 @@ function logSummary(log: QuickLog): string {
     : `${log.reps ?? 0} שכיבות סמיכה`;
 }
 
-/** This participant's own distinct past values for one activity, newest first. */
-function previousValuesFor(logs: QuickLog[], activity: QuickActivity): number[] {
-  const seen = new Set<number>();
-  const values: number[] = [];
-  for (const log of logs) {
-    if (log.activity !== activity) continue;
-    const raw = activity === 'running' ? log.distance_meters : log.reps;
-    if (raw === null || seen.has(raw)) continue;
-    seen.add(raw);
-    values.push(raw);
-  }
-  return values.slice(0, 8);
-}
-
 /**
  * Log an activity on your own, with no training behind it: a run (just the
  * distance) or a set of push-ups (just the total). Unlimited entries, and
@@ -72,13 +67,13 @@ export default function QuickLogCard({
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<number | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   // The card renders from its own list, so adding and removing land instantly
   // with no route refresh — a refresh here would flash the page's loading UI.
   // Points shown elsewhere on the page catch up on the next visit.
   const [entries, setEntries] = useState(logs);
 
   const active = ACTIVITIES.find((entry) => entry.value === activity)!;
-  const previousValues = previousValuesFor(entries, activity);
   const parsed = Number(value);
   const preview = quickLogPoints(activity, parsed, participant.gender);
   const totalPoints = entries.reduce((sum, log) => sum + log.points, 0);
@@ -173,28 +168,6 @@ export default function QuickLogCard({
           </div>
         </label>
 
-        {previousValues.length > 0 ? (
-          <label className="space-y-1.5">
-            <span className="text-xs font-medium text-muted">בחירה מתוך רשומות קודמות</span>
-            <select
-              className="input h-10 text-sm tnum"
-              value=""
-              onChange={(event) => {
-                if (!event.target.value) return;
-                setValue(event.target.value);
-                setSaved(null);
-              }}
-            >
-              <option value="">— בחרו ערך קודם —</option>
-              {previousValues.map((option) => (
-                <option key={option} value={option}>
-                  {activity === 'running' ? distanceLabel(option) : `${option} חזרות`}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-
         {preview > 0 ? (
           <p className="text-xs text-muted tnum">
             שווה <span className="font-semibold text-ink">{preview} נקודות</span> לקבוצה שלכם.
@@ -236,35 +209,50 @@ export default function QuickLogCard({
 
       {entries.length > 0 ? (
         <div className="border-t border-line">
-          <ul className="divide-y divide-line">
-            {entries.slice(0, 5).map((log) => (
-              <li key={log.id} className="flex items-center gap-3 px-4 py-2.5">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-elevated text-muted">
-                  {log.activity === 'running' ? (
-                    <Footprints aria-hidden className="h-4 w-4" />
-                  ) : (
-                    <Dumbbell aria-hidden className="h-4 w-4" />
-                  )}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink tnum">{logSummary(log)}</p>
-                  <p suppressHydrationWarning className="text-xs text-muted">
-                    {formatRelativeTime(log.created_at)}
-                  </p>
-                </div>
-                <span className="shrink-0 text-sm font-semibold text-ink tnum">{log.points} נק׳</span>
-                <button
-                  type="button"
-                  onClick={() => remove.mutate(log.id)}
-                  disabled={remove.isPending}
-                  aria-label={`מחיקת הרישום — ${logSummary(log)}`}
-                  className="btn-ghost h-8 w-8 shrink-0 p-0 text-muted hover:text-rose-500 disabled:opacity-40"
-                >
-                  <Trash2 aria-hidden className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
+          <button
+            type="button"
+            onClick={() => setHistoryOpen((current) => !current)}
+            aria-expanded={historyOpen}
+            className="flex w-full items-center justify-between px-4 py-2.5 text-sm font-medium text-ink hover:bg-elevated"
+          >
+            <span>הרישומים שלי ({entries.length})</span>
+            <ChevronDown
+              aria-hidden
+              className={cn('h-4 w-4 text-muted transition-transform', historyOpen && 'rotate-180')}
+            />
+          </button>
+
+          {historyOpen ? (
+            <ul className="max-h-72 divide-y divide-line overflow-y-auto border-t border-line">
+              {entries.map((log) => (
+                <li key={log.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-elevated text-muted">
+                    {log.activity === 'running' ? (
+                      <Footprints aria-hidden className="h-4 w-4" />
+                    ) : (
+                      <Dumbbell aria-hidden className="h-4 w-4" />
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-ink tnum">{logSummary(log)}</p>
+                    <p suppressHydrationWarning className="text-xs text-muted">
+                      {formatRelativeTime(log.created_at)}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-sm font-semibold text-ink tnum">{log.points} נק׳</span>
+                  <button
+                    type="button"
+                    onClick={() => remove.mutate(log.id)}
+                    disabled={remove.isPending}
+                    aria-label={`מחיקת הרישום — ${logSummary(log)}`}
+                    className="btn-ghost h-8 w-8 shrink-0 p-0 text-muted hover:text-rose-500 disabled:opacity-40"
+                  >
+                    <Trash2 aria-hidden className="h-4 w-4" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
     </Card>
