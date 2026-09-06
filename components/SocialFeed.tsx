@@ -385,7 +385,7 @@ function PostImage({ src, alt }: { src: string; alt: string }) {
       alt={alt}
       loading="lazy"
       onError={() => setFailed(true)}
-      className="aspect-square w-full bg-elevated object-cover"
+      className="max-h-[70vh] w-full bg-elevated object-contain"
     />
   );
 }
@@ -415,6 +415,40 @@ function PostMedia({ media, alt }: { media: SessionMedia; alt: string }) {
   if (!media.image_url) return null;
   if (media.mime_type) return <PostFile media={media} />;
   return <PostImage src={media.image_url} alt={alt} />;
+}
+
+/** Clamps a long post description to a few lines with a "show more/less" toggle. */
+function ClampedCaption({ className, children }: { className?: string; children: ReactNode }) {
+  const [expanded, setExpanded] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const textRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const check = () => {
+      const el = textRef.current;
+      if (el) setOverflowing(el.scrollHeight - el.clientHeight > 1);
+    };
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, [children, expanded]);
+
+  return (
+    <div>
+      <div ref={textRef} className={cn(className, !expanded && 'line-clamp-4')}>
+        {children}
+      </div>
+      {overflowing || expanded ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+          className="mt-0.5 text-sm font-medium text-accent hover:underline"
+        >
+          {expanded ? 'הצג פחות' : 'הצג עוד'}
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 /* -------------------------------------------------------------- post */
@@ -563,9 +597,9 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
     </div>
   ) : caption ? (
     // The author's name already shows in the header right above, so it's not repeated here.
-    <div className={cn('text-sm text-ink', !hasMedia && 'text-[15px] leading-relaxed')}>
+    <ClampedCaption className={cn('text-sm text-ink', !hasMedia && 'text-[15px] leading-relaxed')}>
       {renderFormattedText(caption)}
-    </div>
+    </ClampedCaption>
   ) : null;
 
   return (
@@ -880,7 +914,7 @@ function Composer({ viewer, sessions, users }: { viewer: User; sessions: Trainin
             <div className="relative overflow-hidden rounded-xl border border-line">
               {isImage ? (
                 // eslint-disable-next-line @next/next/no-img-element -- local data URL preview
-                <img src={dataUrl} alt="תצוגה מקדימה של התמונה שנבחרה" className="max-h-72 w-full object-cover" />
+                <img src={dataUrl} alt="תצוגה מקדימה של התמונה שנבחרה" className="max-h-72 w-full bg-elevated object-contain" />
               ) : (
                 <div className="flex items-center gap-3 bg-elevated px-4 py-4">
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-surface text-accent">

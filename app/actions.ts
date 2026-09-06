@@ -571,8 +571,6 @@ export async function addMediaComment(
   return { ok: true, data: comment };
 }
 
-const MAX_CAPTION_LENGTH = 500;
-
 /** Only the post's own author may edit its caption. */
 export async function updateMediaPost(
   mediaId: string,
@@ -581,9 +579,6 @@ export async function updateMediaPost(
 ): Promise<ActionResult<SessionMedia>> {
   if (!mediaId || !userId) return { ok: false, error: 'חסר פוסט או משתמש.' };
   const trimmed = caption.trim();
-  if (trimmed.length > MAX_CAPTION_LENGTH) {
-    return { ok: false, error: `הכיתוב מוגבל ל-${MAX_CAPTION_LENGTH} תווים.` };
-  }
 
   const owner = await getMediaOwner(mediaId);
   if (!owner) return { ok: false, error: 'הפוסט לא נמצא.' };

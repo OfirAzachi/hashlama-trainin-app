@@ -7,8 +7,6 @@ import {
   CheckCircle2,
   ImagePlus,
   Loader2,
-  Minus,
-  Plus,
   Send,
   TriangleAlert,
   X,
@@ -17,12 +15,11 @@ import { useRouter } from 'next/navigation';
 import { startTransition, useMemo, useRef, useState } from 'react';
 
 import { submitSessionLog, uploadSessionMedia } from '@/app/actions';
-import { Badge, Card, CardHeader, DurationInput, GroupBadge } from '@/components/ui/primitives';
+import { Badge, Card, CardHeader, GroupBadge } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
 import { METRIC_UNITS, formatDate, formatDuration, parseDuration } from '@/lib/format';
 import { fileToDataUrl } from '@/lib/image-resize';
 import type {
-  ExercisePrescription,
   LogEntryInput,
   MetricType,
   Participant,
@@ -65,17 +62,38 @@ function toMetricValue(raw: string, metric: MetricType): number | null {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 }
 
-function placeholderFor(exercise: ExercisePrescription): string {
-  if (exercise.target_value === null) return METRIC_UNITS[exercise.metric_type];
-  switch (exercise.metric_type) {
-    case 'time_seconds':
-      return formatDuration(exercise.target_value);
-    case 'distance_meters':
-      return `${exercise.target_value}`;
+/** The selectable values offered for one exercise's metric type. */
+function optionsFor(metric: MetricType): number[] {
+  switch (metric) {
+    case 'reps':
+      return Array.from({ length: 101 }, (_, index) => index); // 0–100
     case 'weight_kg':
-      return `${exercise.target_value}`;
+      return Array.from({ length: 81 }, (_, index) => index * 2.5); // 0–200 ק"ג
+    case 'distance_meters':
+      return Array.from({ length: 100 }, (_, index) => (index + 1) * 100); // 100–10,000 מ'
+    case 'time_seconds': {
+      const values: number[] = [];
+      for (let s = 15; s <= 600; s += 15) values.push(s); // 0:15–10:00
+      for (let s = 630; s <= 1800; s += 30) values.push(s); // 10:30–30:00
+      for (let s = 1860; s <= 5400; s += 60) values.push(s); // 31:00–90:00
+      return values;
+    }
     default:
-      return `${exercise.target_value}`;
+      return [];
+  }
+}
+
+/** How one option's value is labeled inside the select. */
+function formatOption(value: number, metric: MetricType): string {
+  switch (metric) {
+    case 'time_seconds':
+      return formatDuration(value);
+    case 'distance_meters':
+      return `${value} מ'`;
+    case 'weight_kg':
+      return `${value} ק"ג`;
+    default:
+      return `${value}`;
   }
 }
 
@@ -116,12 +134,6 @@ export default function ParticipantLogger({
 
   const setRaw = (exerciseId: string, raw: string) =>
     setDrafts((current) => ({ ...current, [exerciseId]: { raw, touched: true } }));
-
-  const bump = (exercise: ExercisePrescription, step: number) => {
-    const current = Number(drafts[exercise.id]?.raw ?? exercise.target_value ?? 0);
-    const next = Math.max(0, (Number.isFinite(current) ? current : 0) + step);
-    setRaw(exercise.id, String(next));
-  };
 
   const logMutation = useMutation({
     mutationFn: async () => {
@@ -280,58 +292,19 @@ export default function ParticipantLogger({
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {exercise.metric_type === 'reps' || exercise.metric_type === 'weight_kg' ? (
-                    <button
-                      type="button"
-                      aria-label={`הפחתה — ${exercise.name}`}
-                      onClick={() => bump(exercise, exercise.metric_type === 'weight_kg' ? -2.5 : -1)}
-                      className="btn-secondary h-11 w-11 shrink-0 p-0"
-                    >
-                      <Minus aria-hidden className="h-4 w-4" />
-                    </button>
-                  ) : null}
-
-                  <div className="relative flex-1">
-                    {exercise.metric_type === 'time_seconds' ? (
-                      <DurationInput
-                        id={exercise.id}
-                        className="input h-11 pe-14 text-base tnum"
-                        placeholder={placeholderFor(exercise)}
-                        value={draft}
-                        onValueChange={(value) => setRaw(exercise.id, value)}
-                        aria-describedby={`${exercise.id}-hint`}
-                      />
-                    ) : (
-                      <input
-                        id={exercise.id}
-                        className="input h-11 pe-14 text-base tnum"
-                        inputMode="decimal"
-                        placeholder={placeholderFor(exercise)}
-                        value={draft}
-                        onChange={(event) => setRaw(exercise.id, event.target.value)}
-                        aria-describedby={`${exercise.id}-hint`}
-                      />
-                    )}
-                    <span
-                      id={`${exercise.id}-hint`}
-                      className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-xs text-muted"
-                    >
-                      {METRIC_UNITS[exercise.metric_type]}
-                    </span>
-                  </div>
-
-                  {exercise.metric_type === 'reps' || exercise.metric_type === 'weight_kg' ? (
-                    <button
-                      type="button"
-                      aria-label={`הוספה — ${exercise.name}`}
-                      onClick={() => bump(exercise, exercise.metric_type === 'weight_kg' ? 2.5 : 1)}
-                      className="btn-secondary h-11 w-11 shrink-0 p-0"
-                    >
-                      <Plus aria-hidden className="h-4 w-4" />
-                    </button>
-                  ) : null}
-                </div>
+                <select
+                  id={exercise.id}
+                  className="input h-11 text-base tnum"
+                  value={draft}
+                  onChange={(event) => setRaw(exercise.id, event.target.value)}
+                >
+                  <option value="">— בחרו {METRIC_UNITS[exercise.metric_type]} —</option>
+                  {optionsFor(exercise.metric_type).map((value) => (
+                    <option key={value} value={value}>
+                      {formatOption(value, exercise.metric_type)}
+                    </option>
+                  ))}
+                </select>
 
                 <p className="text-xs text-muted">{exercise.prescription}</p>
               </div>
