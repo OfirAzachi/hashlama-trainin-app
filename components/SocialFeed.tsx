@@ -473,9 +473,15 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
   const [isSaving, startSaveTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
 
+  // Real like state, updated from the server's response — not just the
+  // initial prop — so it survives past the transition instead of the
+  // optimistic value snapping back once the action resolves (there's no
+  // revalidatePath here, see toggleMediaLike, so the prop itself never
+  // changes on its own).
+  const [likeBase, setLikeBase] = useState({ likes: post.likes, likedByMe: post.likedByMe });
   // Optimistic like: the heart flips instantly, the action reconciles after.
   const [likeState, setLikeState] = useOptimistic(
-    { likes: post.likes, likedByMe: post.likedByMe },
+    likeBase,
     (_current, next: { likes: number; likedByMe: boolean }) => next,
   );
 
@@ -518,12 +524,14 @@ function PostCard({ post, viewer, users }: { post: FeedPost; viewer: User; users
   };
 
   const onLike = () => {
+    const next = {
+      likes: likeState.likes + (likeState.likedByMe ? -1 : 1),
+      likedByMe: !likeState.likedByMe,
+    };
     startTransition(async () => {
-      setLikeState({
-        likes: likeState.likes + (likeState.likedByMe ? -1 : 1),
-        likedByMe: !likeState.likedByMe,
-      });
-      await toggleMediaLike(post.media.id, viewer.id);
+      setLikeState(next);
+      const result = await toggleMediaLike(post.media.id, viewer.id);
+      if (result.ok) setLikeBase(result.data);
     });
   };
 

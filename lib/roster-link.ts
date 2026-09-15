@@ -5,14 +5,15 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './supabase/database.types';
 
 /**
- * Matches an authenticated account to a roster row by its login code (first
- * name + digits derived from the physical מ.א — see the personal_number
- * scheme migration), then copies name/role/team/unit onto `public.users` —
- * the single source of truth for both the Google-first signup flow
- * (`/auth/callback`) and the already-authenticated linking flow
- * (`/link-account`). Only trainers add people to the roster, so an unmatched
- * or already-claimed code is rejected outright rather than allowed to
- * self-declare an account.
+ * Matches an authenticated account to a roster row by its login code —
+ * either the participant scheme (first name + digits derived from the
+ * physical מ.א, see the personal_number scheme migration) or a plain phone
+ * number for a directly-provisioned trainer — then copies
+ * name/role/team/unit onto `public.users`, the single source of truth for
+ * both the Google-first signup flow (`/auth/callback`) and the
+ * already-authenticated linking flow (`/link-account`). Only trainers add
+ * people to the roster, so an unmatched or already-claimed code is rejected
+ * outright rather than allowed to self-declare an account.
  */
 export async function linkRosterToUser(
   service: SupabaseClient<Database>,
@@ -24,7 +25,7 @@ export async function linkRosterToUser(
   if (!trimmed) {
     return { ok: false, error: 'הזינו קוד כניסה.' };
   }
-  if (!/^[א-ת]+[0-9]+$/.test(trimmed)) {
+  if (!/^[א-ת]*[0-9]+$/.test(trimmed)) {
     return { ok: false, error: 'קוד כניסה הוא שם פרטי ואחריו ספרות, בלי רווח (לדוגמה: אופיר12).' };
   }
 
@@ -57,8 +58,11 @@ export async function linkRosterToUser(
     .update({
       name: `${rosterRow.first_name} ${rosterRow.last_name}`.trim(),
       role: rosterRow.role,
-      team: rosterRow.role === 'participant' ? rosterRow.team : null,
-      unit: rosterRow.role === 'participant' ? rosterRow.unit : null,
+      // A trainer can command a team too (shows up in that team's roster and
+      // standings, per the Participant type) — only km_levels stays
+      // participant-only, since a כמ status never applies to a trainer.
+      team: rosterRow.team,
+      unit: rosterRow.unit,
       gender: rosterRow.gender,
       final_run_seconds: rosterRow.final_run_seconds,
       pushup_achievement: rosterRow.pushup_achievement,
